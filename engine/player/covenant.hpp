@@ -9,12 +9,17 @@
 #include "util/span.hpp"
 #include "util/string_view.hpp"
 #include "util/timespan.hpp"
+#include "util/cache.hpp"
 
 #include "report/reports.hpp"
 
 #include "item/special_effect.hpp"
 #include "action/sc_action_state.hpp"
 #include "action/dbc_proc_callback.hpp"
+
+#include "interfaces/bcp_api.hpp"
+
+#include "rapidjson/document.h"
 
 struct player_t;
 struct sim_t;
@@ -89,6 +94,9 @@ class covenant_state_t
   /// A list of currently enabled soulbind abilities for the actor
   std::vector<unsigned>        m_soulbinds;
 
+  /// Soulbind character string
+  std::string                  m_soulbind_id;
+
   /// Soulbinds option string (user input)
   std::vector<std::string>     m_soulbind_str;
 
@@ -106,6 +114,18 @@ public:
   /// Current covenant type
   covenant_e type() const
   { return m_covenant; }
+
+  void set_type( covenant_e covenant )
+  { m_covenant = covenant; }
+
+  void add_conduit( unsigned conduit_id, unsigned rank )
+  { m_conduits.emplace_back( conduit_id, rank ); }
+
+  void add_soulbind( unsigned spell_id )
+  { m_soulbinds.push_back( spell_id ); }
+
+  void set_soulbind_id( const std::string& str )
+  { m_soulbind_id = str; }
 
   /// Current covenant id
   unsigned id() const
@@ -138,6 +158,9 @@ public:
   /// HTML report covenant-related information generator
   report::sc_html_stream& generate_report( report::sc_html_stream& root ) const;
 
+  /// Conduit checking helper function for default profile generation
+  void check_conduits( util::string_view tier_name, int max_conduit_rank ) const;
+
   /// Option string for the soulbinds on this actor
   std::string soulbind_option_str() const;
 
@@ -164,9 +187,40 @@ public:
 
 std::unique_ptr<covenant_state_t> create_player_state( const player_t* player );
 
+struct covenant_cb_base_t
+{
+  bool trigger_on_class;  // proc off class ability
+  bool trigger_on_base;   // proc off base ability
+
+  covenant_cb_base_t( bool on_class = true, bool on_base = false );
+  virtual ~covenant_cb_base_t() {}
+  virtual void trigger( action_t*, action_state_t* ) = 0;
+};
+
+struct covenant_ability_cast_cb_t : public dbc_proc_callback_t
+{
+  std::vector<unsigned> class_abilities;
+  unsigned base_ability;
+  auto_dispose< std::vector<covenant_cb_base_t*> > cb_list;
+
+  covenant_ability_cast_cb_t( player_t* p, const special_effect_t& e );
+
+  void initialize() override;
+  void trigger( action_t* a, action_state_t* s ) override;
+};
+
+covenant_ability_cast_cb_t* get_covenant_callback( player_t* p );
+
 action_t* create_action( player_t* player, util::string_view name, const std::string& options );
 
+bool parse_blizzard_covenant_information( player_t* player, const rapidjson::Value& covenant_data );
+
 } // Namespace covenant ends
+
+namespace report_decorators
+{
+std::string decorated_conduit_name( const sim_t& sim, const conduit_data_t& conduit );
+}
 
 inline void format_to( covenant_e covenant, fmt::format_context::iterator out )
 {

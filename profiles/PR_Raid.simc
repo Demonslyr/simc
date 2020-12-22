@@ -10,6 +10,7 @@ PR_Demon_Hunter_Vengeance.simc
 
 PR_Druid_Balance.simc
 PR_Druid_Feral.simc
+PR_Druid_Feral_Owlweave.simc
 PR_Druid_Guardian.simc
 
 PR_Hunter_Beast_Mastery.simc
@@ -26,8 +27,9 @@ PR_Monk_Windwalker.simc
 PR_Paladin_Protection.simc
 PR_Paladin_Retribution.simc
 
-PR_Priest_Holy.simc
+# PR_Priest_Discipline.simc
 PR_Priest_Shadow.simc
+PR_Priest_Shadow_Necrolord.simc
 
 PR_Rogue_Assassination.simc
 PR_Rogue_Outlaw.simc
@@ -35,6 +37,7 @@ PR_Rogue_Subtlety.simc
 
 PR_Shaman_Elemental.simc
 PR_Shaman_Enhancement.simc
+PR_Shaman_Enhancement_VDW.simc
 
 PR_Warlock_Affliction.simc
 PR_Warlock_Demonology.simc
@@ -42,4 +45,4 @@ PR_Warlock_Destruction.simc
 
 PR_Warrior_Arms.simc
 PR_Warrior_Fury.simc
-# PR_Warrior_Protection.simc
+PR_Warrior_Protection.simc

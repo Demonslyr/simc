@@ -169,6 +169,9 @@ public:
   /// Whether or not the action is an interrupt (specifically triggers PF2_CAST_INTERRUPT callbacks)
   bool is_interrupt;
 
+  /// Whether the action is used from the precombat action list. Will be set up automatically by action_t::init_finished
+  bool is_precombat;
+
   /// Is the action initialized? (action_t::init ran successfully)
   bool initialized;
 
@@ -336,6 +339,9 @@ public:
   /// Missile travel speed in yards / second
   double travel_speed;
 
+  /// Missile travel delay in seconds
+  double travel_delay;
+
   // Amount of resource for the energize to grant.
   double energize_amount;
 
@@ -405,6 +411,9 @@ public:
 
   /** Marker for sample action priority list reporting */
   char marker;
+
+  /* The last time the action was executed */
+  timespan_t last_used;
 
   // Options
   struct options_t {
@@ -559,7 +568,7 @@ public:
 
   const char* name() const
   { return name_str.c_str(); }
-  
+
   size_t num_travel_events() const
   { return travel_events.size(); }
 
@@ -653,8 +662,6 @@ public:
   virtual double calculate_weapon_damage( double attack_power ) const;
 
   virtual double calculate_crit_damage_bonus( action_state_t* s ) const;
-
-  virtual double target_armor(player_t* t) const;
 
   virtual double recharge_multiplier( const cooldown_t& ) const
   { return base_recharge_multiplier; }
@@ -785,6 +792,8 @@ public:
   virtual double composite_attack_power() const;
 
   virtual double composite_spell_power() const;
+
+  virtual double composite_target_armor( player_t* t ) const;
 
   virtual double composite_target_crit_chance( player_t* target ) const;
 
@@ -982,7 +991,7 @@ public:
   {
     return( r == BLOCK_RESULT_BLOCKED || r == BLOCK_RESULT_CRIT_BLOCKED );
   }
-  
+
   friend void format_to( const action_t&, fmt::format_context::iterator );
 };
 

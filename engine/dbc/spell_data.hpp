@@ -344,6 +344,7 @@ struct spelleffect_data_t
   // Fetch value dynamically based on the spell effect type/subtype
   double default_value() const
   { return base_value() * default_multiplier(); }
+  unsigned affected_schools() const;
 
   static const spelleffect_data_t& nil();
   static const spelleffect_data_t* find( unsigned, bool ptr = false );
@@ -354,7 +355,6 @@ struct spelleffect_data_t
 private:
   static util::span<spelleffect_data_t> _data( bool ptr );
 
-  double scaled_average( double budget, unsigned level ) const;
   double scaled_delta( double budget ) const;
   double scaled_min( double avg, double delta ) const;
   double scaled_max( double avg, double delta ) const;
@@ -739,9 +739,9 @@ struct spell_data_t
 
   std::string to_str() const;
 
-  bool affected_by_all( const dbc_t& dbc, const spelleffect_data_t& effect ) const;
-  bool affected_by_category( const dbc_t& dbc, const spelleffect_data_t& effect ) const;
-  bool affected_by_category( const dbc_t& dbc, int category ) const;
+  bool affected_by_all( const spelleffect_data_t& effect ) const;
+  bool affected_by_category( const spelleffect_data_t& effect ) const;
+  bool affected_by_category( int category ) const;
   bool affected_by_label( const spelleffect_data_t& effect ) const;
   bool affected_by_label( int label ) const;
   bool affected_by( const spell_data_t* ) const;

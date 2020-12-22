@@ -389,7 +389,7 @@ std::string covenant_state_t::soulbind_option_str() const
     b.emplace_back( fmt::format( "{}", spell_id ) );
   } );
 
-  return fmt::format( "soulbind={}", util::string_join( b, "/" ) );
+  return fmt::format( "soulbind={},{}", m_soulbind_id, util::string_join( b, "/" ) );
 }
 
 std::string covenant_state_t::covenant_option_str() const
@@ -405,7 +405,7 @@ std::string covenant_state_t::covenant_option_str() const
 std::unique_ptr<expr_t> covenant_state_t::create_expression(
     util::span<const util::string_view> expr_str ) const
 {
-  if ( expr_str.size() == 1 )
+  if ( expr_str.size() < 2 )
   {
     return nullptr;
   }
@@ -418,7 +418,8 @@ std::unique_ptr<expr_t> covenant_state_t::create_expression(
       throw std::invalid_argument(
           fmt::format( "Invalid covenant string '{}'.", expr_str[ 1 ] ) );
     }
-    return expr_t::create_constant( "covenant", as<double>( covenant == m_covenant ) );
+    bool active = covenant == covenant_e::DISABLED ? !enabled() : covenant == m_covenant;
+    return expr_t::create_constant( "covenant", as<double>( active ) );
   }
   else if ( util::str_compare_ci( expr_str[ 0 ], "conduit" ) )
   {
@@ -428,14 +429,32 @@ std::unique_ptr<expr_t> covenant_state_t::create_expression(
       return expr_t::create_constant( "conduit_nok", 0.0 );
     }
 
-    if ( util::str_compare_ci( expr_str[ 2 ], "enabled" ) )
+    if ( expr_str.size() == 2 )
     {
-      return expr_t::create_constant( "conduit_enabled", as<double>( conduit_ability.ok() ) );
+      return expr_t::create_constant( "conduit_enabled", conduit_ability.ok() );
     }
-    else if ( util::str_compare_ci( expr_str[ 2 ], "rank" ) )
+
+    if ( expr_str.size() == 3 )
     {
-      return expr_t::create_constant( "conduit_rank", as<double>( conduit_ability.rank() ) );
+      if ( util::str_compare_ci( expr_str[ 2 ], "enabled" ) )
+      {
+        return expr_t::create_constant( "conduit_enabled", as<double>( conduit_ability.ok() ) );
+      }
+      else if ( util::str_compare_ci( expr_str[ 2 ], "rank" ) )
+      {
+        return expr_t::create_constant( "conduit_rank", as<double>( conduit_ability.rank() ) );
+      }
+      else if ( util::str_compare_ci( expr_str[ 2 ], "value" ) )
+      {
+        return expr_t::create_constant( "conduit_value", conduit_ability.value() );
+      }
+      else if ( util::str_compare_ci( expr_str[ 2 ], "time_value" ) )
+      {
+        return expr_t::create_constant( "conduit_time_value", conduit_ability.time_value() );
+      }
     }
+
+    throw std::invalid_argument( fmt::format( "Invalid conduit string '{}'", fmt::join( expr_str, "." ) ) );
   }
   else if ( util::str_compare_ci( expr_str[ 0 ], "soulbind" ) )
   {
@@ -446,9 +465,9 @@ std::unique_ptr<expr_t> covenant_state_t::create_expression(
           fmt::format( "Invalid soulbind ability '{}'", expr_str[ 1 ] ) );
     }
 
-    if ( util::str_compare_ci( expr_str[ 2 ], "enabled" ) )
+    if ( expr_str.size() == 2 || ( expr_str.size() == 3 && util::str_compare_ci( expr_str[ 2 ], "enabled" ) ) )
     {
-      return expr_t::create_constant( "soulbind_enabled", as<double>( soulbind_spell->ok() ) );
+      return expr_t::create_constant( "soulbind_enabled", soulbind_spell->ok() );
     }
   }
 
@@ -516,9 +535,9 @@ report::sc_html_stream& covenant_state_t::generate_report( report::sc_html_strea
     {
       if ( std::get<0>( cd ) == e.id )
       {
-        auto cd_spell = m_player->find_spell( e.spell_id );
+        auto conduit = m_player->find_conduit_spell( e.name );
         root.format( "<li>{} ({})</li>\n",
-                     report_decorators::decorated_spell_name( m_player->sim, *cd_spell ),
+                     report_decorators::decorated_conduit_name( m_player->sim, conduit ),
                      std::get<1>( cd ) + 1 );
       }
     }
@@ -542,62 +561,113 @@ report::sc_html_stream& covenant_state_t::generate_report( report::sc_html_strea
   return root;
 }
 
+// Conduit checking function for default profile generation in report_helper::check_gear()
+void covenant_state_t::check_conduits( util::string_view tier_name, int max_conduit_rank ) const
+{
+  // Copied logic from covenant_state_t::generate_report(), feel free to improve it
+  for ( const auto& e : conduit_entry_t::data( m_player->dbc->ptr ) )
+  {
+    for ( const auto& cd : m_conduits )
+    {
+      if ( std::get<0>( cd ) == e.id )
+      {
+        unsigned int conduit_rank = std::get<1>( cd ) + 1;
+        if ( conduit_rank != max_conduit_rank )
+        {
+          auto conduit = m_player -> find_conduit_spell( e.name );
+          m_player -> sim -> error( "Player {} has conduit {} equipped at rank {}, conduit rank for {} is {}.\n",
+                                    m_player -> name(), e.name, conduit_rank, tier_name, max_conduit_rank );
+        }
+      }
+    }
+  }
+  // TODO?: check conduit count too? Not sure if it's possible
+  // It doesn't seem like we extract conduit type or soulbind trees from spelldata
+}
+
+covenant_cb_base_t::covenant_cb_base_t( bool on_class, bool on_base )
+  : trigger_on_class( on_class ), trigger_on_base( on_base )
+{}
+
+covenant_ability_cast_cb_t::covenant_ability_cast_cb_t( player_t* p, const special_effect_t& e )
+  : dbc_proc_callback_t( p, e ),
+    class_abilities(),
+    base_ability( p->covenant->get_covenant_ability_spell_id( true ) ),
+    cb_list()
+{
+  class_abilities.push_back( p->covenant->get_covenant_ability_spell_id() );
+
+  // Manual overrides for covenant abilities that don't utilize the spells found in __covenant_ability_data dbc table
+  if ( p->type == DRUID && p->covenant->type() == covenant_e::KYRIAN )
+    class_abilities.push_back( 326446 );
+  // Night Fae paladins have 4 different abilities in a cycle, but only Blessing of Summer is in __covenant_ability_data
+  if ( p -> type == PALADIN && p -> covenant -> type() == covenant_e::NIGHT_FAE )
+  {
+    class_abilities.push_back( 328622 ); // Blessing of Autumn
+    class_abilities.push_back( 328281 ); // Blessing of Winter
+    class_abilities.push_back( 328282 ); // Blessing of Spring
+  }
+  if ( p -> type == DEATH_KNIGHT && p -> covenant -> type() == covenant_e::NIGHT_FAE )
+  {
+    class_abilities.push_back( 152280 );  // Defile
+  }
+}
+
+void covenant_ability_cast_cb_t::initialize()
+{
+  listener->sim->print_debug( "Initializing covenant ability cast handler..." );
+  listener->callbacks.register_callback( effect.proc_flags(), effect.proc_flags2(), this );
+}
+
+void covenant_ability_cast_cb_t::trigger( action_t* a, action_state_t* s )
+{
+  for ( auto class_ability : class_abilities )
+  {
+    if ( a -> data().id() == class_ability )
+    {
+      for ( const auto& cb : cb_list )
+        if ( cb -> trigger_on_class )
+          cb -> trigger( a, s );
+      return;
+    }
+  }
+
+  if ( a -> data().id() == base_ability )
+    for ( const auto& cb : cb_list )
+      if ( cb -> trigger_on_base )
+        cb -> trigger( a, s );
+}
+
+covenant_ability_cast_cb_t* get_covenant_callback( player_t* p )
+{
+  if ( !p->covenant->enabled() )
+    return nullptr;
+
+  if ( !p->covenant->cast_callback )
+  {
+    auto eff          = new special_effect_t( p );
+    eff->name_str     = "covenant_cast_callback";
+    eff->proc_flags_  = PF_ALL_DAMAGE;
+    eff->proc_flags2_ = PF2_CAST | PF2_CAST_DAMAGE | PF2_CAST_HEAL;
+    p->special_effects.push_back( eff );
+    p->covenant->cast_callback = new covenant_ability_cast_cb_t( p, *eff );
+  }
+
+  return debug_cast<covenant_ability_cast_cb_t*>( p->covenant->cast_callback );
+}
+
 struct fleshcraft_t : public spell_t
 {
-  struct embody_pulse_t : public spell_t
-  {
-    embody_pulse_t( player_t* p, double divisor ) : spell_t( "embody_the_construct", p, p->find_spell( 342181 ) )
-    {
-      background = true;
-      aoe = -1;
-      spell_power_mod.direct = 1.8 / divisor;
-    }
-
-    double composite_spell_power() const override
-    {
-      return std::max( spell_t::composite_spell_power(), spell_t::composite_attack_power() );
-    }
-  };
-
-  bool do_pulse;
-  action_t* embody_pulse;
-
   fleshcraft_t( player_t* p, util::string_view opt )
-    : spell_t( "fleshcraft", p, p->find_covenant_spell( "Fleshcraft" ) ), do_pulse( false ), embody_pulse( nullptr )
+    : spell_t( "fleshcraft", p, p->find_covenant_spell( "Fleshcraft" ) )
   {
     harmful = may_crit = may_miss = false;
     channeled = true;
 
     parse_options( opt );
-
-    if ( data().ok() && p->find_soulbind_spell( "Embody the Construct" )->ok() )
-    {
-      embody_pulse = p->find_action( "embody_the_construct" );
-      if ( !embody_pulse )
-        embody_pulse = new embody_pulse_t( p, data().duration() / data().effectN( 1 ).period() );
-    }
   }
 
   double composite_haste() const override { return 1.0; }
-
-  void execute() override
-  {
-    do_pulse = player->buffs.embody_the_construct->at_max_stacks();
-
-    if ( do_pulse )
-      player->buffs.embody_the_construct->expire();
-
-    spell_t::execute();
-  }
-
-  void tick( dot_t* d ) override
-  {
-    // TODO: add shielding
-    spell_t::tick( d );
-
-    if ( do_pulse && embody_pulse )
-      embody_pulse->schedule_execute();
-  }
 };
 
 action_t* create_action( player_t* player, util::string_view name, const std::string& options )
@@ -607,4 +677,90 @@ action_t* create_action( player_t* player, util::string_view name, const std::st
   return nullptr;
 }
 
+bool parse_blizzard_covenant_information( player_t*               player,
+                                          const rapidjson::Value& covenant_data )
+{
+  if ( !covenant_data.HasMember( "chosen_covenant" ) ||
+       !covenant_data[ "chosen_covenant" ].HasMember( "name" ) )
+  {
+    return true;
+  }
+
+  std::string covenant_str = covenant_data[ "chosen_covenant" ][ "name" ].GetString();
+  util::tokenize( covenant_str );
+  auto covenant = util::parse_covenant_string( covenant_str );
+  if ( covenant == covenant_e::INVALID )
+  {
+    return false;
+  }
+
+  player->covenant->set_type( covenant );
+
+  // The rest of the code cannot be run because Blizzard API does not indicate the active
+  // path.
+  //return true;
+
+  if ( !covenant_data.HasMember( "soulbinds" ) || !covenant_data[ "soulbinds" ].IsArray() )
+  {
+    return true;
+  }
+
+  for ( auto i = 0u; i < covenant_data[ "soulbinds" ].Size(); ++i )
+  {
+    const auto& soulbind = covenant_data[ "soulbinds" ][ i ];
+    if ( !soulbind[ "is_active" ].GetBool() )
+    {
+      continue;
+    }
+
+    std::string soulbind_name = soulbind[ "soulbind" ][ "name" ].GetString();
+    util::tokenize( soulbind_name );
+    unsigned soulbind_id = soulbind[ "soulbind" ][ "id" ].GetUint();
+
+    player->covenant->set_soulbind_id( fmt::format( "{}:{}", soulbind_name, soulbind_id ) );
+
+    for ( auto trait_idx = 0u; trait_idx < soulbind[ "traits" ].Size(); ++trait_idx )
+    {
+      const auto& entry = soulbind[ "traits" ][ trait_idx ];
+      // Soulbind spell
+      if ( entry.HasMember( "trait" ) )
+      {
+        auto data_entry = soulbind_ability_entry_t::find_by_soulbind_id(
+            entry[ "trait" ][ "id" ].GetUint(), player->dbc->ptr );
+        if ( !data_entry.spell_id )
+        {
+          continue;
+        }
+
+        player->covenant->add_soulbind( data_entry.spell_id );
+      }
+      // Conduit
+      else
+      {
+        const auto& conduit = entry[ "conduit_socket" ];
+        if ( !conduit.HasMember( "socket" ) )
+        {
+          continue;
+        }
+
+        player->covenant->add_conduit( conduit[ "socket" ][ "conduit" ][ "id" ].GetUint(),
+            conduit[ "socket" ][ "rank" ].GetUint() - 1 );
+      }
+    }
+
+    break;
+  }
+
+  return true;
+}
+
 }  // namespace covenant
+
+namespace report_decorators
+{
+std::string decorated_conduit_name( const sim_t& sim, const conduit_data_t& conduit )
+{
+  auto rank_str = fmt::format( "rank={}", conduit.rank() - 1 );
+  return decorated_spell_name( sim, *( conduit.operator->() ), rank_str );
+}
+} // namespace report_decorators

@@ -14,6 +14,8 @@ action/spell.hpp
 action/spell_base.hpp
 action/variable.hpp
 buff/sc_buff.hpp
+class_modules/apl/apl_death_knight.hpp
+class_modules/apl/mage.hpp
 class_modules/class_module.hpp
 class_modules/paladin/sc_paladin.hpp
 class_modules/priest/sc_priest.hpp
@@ -54,6 +56,7 @@ dbc/spell_item_enchantment.hpp
 dbc/spell_query/spell_data_expr.hpp
 dbc/spelltext_data.hpp
 dbc/talent_data.hpp
+dbc/temporary_enchant.hpp
 interfaces/bcp_api.hpp
 interfaces/sc_http.hpp
 interfaces/sc_http_curl.hpp
@@ -184,6 +187,8 @@ action/sequence.cpp
 action/snapshot_stats.cpp
 action/variable.cpp
 buff/sc_buff.cpp
+class_modules/apl/apl_death_knight.cpp
+class_modules/apl/mage.cpp
 class_modules/paladin/sc_paladin.cpp
 class_modules/paladin/sc_paladin_holy.cpp
 class_modules/paladin/sc_paladin_protection.cpp
@@ -240,6 +245,7 @@ dbc/spell_data.cpp
 dbc/spell_item_enchantment.cpp
 dbc/spelltext_data.cpp
 dbc/talent_data.cpp
+dbc/temporary_enchant.cpp
 interfaces/bcp_api.cpp
 interfaces/sc_http.cpp
 interfaces/sc_http_curl.cpp

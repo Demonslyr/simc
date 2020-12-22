@@ -1,7 +1,7 @@
 warrior="T25_Warrior_Fury"
 source=default
 spec=fury
-level=120
+level=50
 race=gnome
 role=attack
 position=back
@@ -26,12 +26,6 @@ actions.precombat+=/food
 actions.precombat+=/augmentation
 # Snapshot raid buffed stats before combat begins and pre-potting is done.
 actions.precombat+=/snapshot_stats
-actions.precombat+=/use_item,name=azsharas_font_of_power
-actions.precombat+=/worldvein_resonance
-actions.precombat+=/memory_of_lucid_dreams
-actions.precombat+=/guardian_of_azeroth
-actions.precombat+=/recklessness
-actions.precombat+=/potion
 
 # Executed every time the actor is available.
 actions=auto_attack
@@ -39,42 +33,37 @@ actions+=/charge
 # This is mostly to prevent cooldowns from being accidentally used during movement.
 actions+=/run_action_list,name=movement,if=movement.distance>5
 actions+=/heroic_leap,if=(raid_event.movement.distance>25&raid_event.movement.in>45)
-actions+=/potion,if=buff.guardian_of_azeroth.up|(!essence.condensed_lifeforce.major&target.time_to_die=60)
-actions+=/rampage,if=cooldown.recklessness.remains<3
-actions+=/blood_of_the_enemy,if=buff.recklessness.up
-actions+=/purifying_blast,if=!buff.recklessness.up&!buff.siegebreaker.up
-actions+=/ripple_in_space,if=!buff.recklessness.up&!buff.siegebreaker.up
-actions+=/worldvein_resonance,if=!buff.recklessness.up&!buff.siegebreaker.up
-actions+=/focused_azerite_beam,if=!buff.recklessness.up&!buff.siegebreaker.up
-actions+=/reaping_flames,if=!buff.recklessness.up&!buff.siegebreaker.up
-actions+=/concentrated_flame,if=!buff.recklessness.up&!buff.siegebreaker.up&dot.concentrated_flame_burn.remains=0
-actions+=/the_unbound_force,if=buff.reckless_force.up
-actions+=/guardian_of_azeroth,if=!buff.recklessness.up&(target.time_to_die>195|target.health.pct<20)
-actions+=/memory_of_lucid_dreams,if=!buff.recklessness.up
-actions+=/recklessness,if=!essence.condensed_lifeforce.major&!essence.blood_of_the_enemy.major|cooldown.guardian_of_azeroth.remains>1|buff.guardian_of_azeroth.up|cooldown.blood_of_the_enemy.remains<gcd
-actions+=/whirlwind,if=spell_targets.whirlwind>1&!buff.meat_cleaver.up
-actions+=/use_item,name=ashvanes_razor_coral,if=target.time_to_die<20|!debuff.razor_coral_debuff.up|(target.health.pct<30.1&debuff.conductive_ink_debuff.up)|(!debuff.conductive_ink_debuff.up&buff.memory_of_lucid_dreams.up|prev_gcd.2.guardian_of_azeroth|prev_gcd.2.recklessness&(!essence.memory_of_lucid_dreams.major&!essence.condensed_lifeforce.major))
-actions+=/blood_fury,if=buff.recklessness.up
+actions+=/potion
+actions+=/rampage,if=cooldown.recklessness.remains<3&talent.reckless_abandon.enabled
+actions+=/recklessness,if=gcd.remains=0&((buff.bloodlust.up|talent.anger_management.enabled|raid_event.adds.in>10)|target.time_to_die>100|(talent.massacre.enabled&target.health.pct<35)|target.health.pct<20|target.time_to_die<15&raid_event.adds.in>10)&(spell_targets.whirlwind=1|buff.meat_cleaver.up)
+actions+=/whirlwind,if=spell_targets.whirlwind>1&!buff.meat_cleaver.up|raid_event.adds.in<gcd&!buff.meat_cleaver.up
+actions+=/use_item,name=ashvanes_razor_coral
+actions+=/blood_fury
 actions+=/berserking,if=buff.recklessness.up
 actions+=/lights_judgment,if=buff.recklessness.down&debuff.siegebreaker.down
-actions+=/fireblood,if=buff.recklessness.up
-actions+=/ancestral_call,if=buff.recklessness.up
+actions+=/fireblood
+actions+=/ancestral_call
 actions+=/bag_of_tricks,if=buff.recklessness.down&debuff.siegebreaker.down&buff.enrage.up
 actions+=/run_action_list,name=single_target
 
 actions.movement=heroic_leap
 
-actions.single_target=siegebreaker
-actions.single_target+=/rampage,if=(buff.recklessness.up|buff.memory_of_lucid_dreams.up)|(talent.frothing_berserker.enabled|talent.carnage.enabled&(buff.enrage.remains<gcd|rage>90)|talent.massacre.enabled&(buff.enrage.remains<gcd|rage>90))
+actions.single_target=raging_blow,if=runeforge.will_of_the_berserker.equipped&buff.will_of_the_berserker.remains<gcd
+actions.single_target+=/crushing_blow,if=runeforge.will_of_the_berserker.equipped&buff.will_of_the_berserker.remains<gcd
+actions.single_target+=/siegebreaker,if=spell_targets.whirlwind>1|raid_event.adds.in>15
+actions.single_target+=/rampage,if=buff.recklessness.up|(buff.enrage.remains<gcd|rage>90)|buff.frenzy.remains<1.5
 actions.single_target+=/execute
-actions.single_target+=/furious_slash,if=!buff.bloodlust.up&buff.furious_slash.remains<3
-actions.single_target+=/bladestorm,if=prev_gcd.1.rampage
-actions.single_target+=/bloodthirst,if=buff.enrage.down|azerite.cold_steel_hot_blood.rank>1
-actions.single_target+=/dragon_roar,if=buff.enrage.up
+actions.single_target+=/bladestorm,if=buff.enrage.up&(spell_targets.whirlwind>1|raid_event.adds.in>45)
+actions.single_target+=/bloodthirst,if=buff.enrage.down|conduit.vicious_contempt.rank>5&target.health.pct<35&!talent.cruelty.enabled
+actions.single_target+=/bloodbath,if=buff.enrage.down|conduit.vicious_contempt.rank>5&target.health.pct<35&!talent.cruelty.enabled
+actions.single_target+=/dragon_roar,if=buff.enrage.up&(spell_targets.whirlwind>1|raid_event.adds.in>15)
+actions.single_target+=/onslaught
 actions.single_target+=/raging_blow,if=charges=2
+actions.single_target+=/crushing_blow,if=charges=2
 actions.single_target+=/bloodthirst
-actions.single_target+=/raging_blow,if=talent.carnage.enabled|(talent.massacre.enabled&rage<80)|(talent.frothing_berserker.enabled&rage<90)
-actions.single_target+=/furious_slash,if=talent.furious_slash.enabled
+actions.single_target+=/bloodbath
+actions.single_target+=/raging_blow
+actions.single_target+=/crushing_blow
 actions.single_target+=/whirlwind
 
 head=greathelm_of_phantasmic_reality,id=174167,bonus_id=4824/1517/4775,azerite_powers=437/176/21/13
@@ -95,13 +84,13 @@ main_hand=devastations_hour,id=172187,bonus_id=4824/1517,enchant=masterful_navig
 off_hand=getiikku_cut_of_death,id=159644,bonus_id=1637,enchant=deadly_navigation
 
 # Gear Summary
-# gear_ilvl=476.75
-# gear_strength=10382
-# gear_stamina=21005
-# gear_crit_rating=1677
-# gear_haste_rating=1886
-# gear_mastery_rating=734
-# gear_versatility_rating=124
+# gear_ilvl=151.06
+# gear_strength=567
+# gear_stamina=1012
+# gear_crit_rating=303
+# gear_haste_rating=336
+# gear_mastery_rating=151
+# gear_versatility_rating=18
 # gear_corruption=800
 # gear_corruption_resistance=50
-# gear_armor=8230
+# gear_armor=672

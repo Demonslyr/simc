@@ -20,6 +20,8 @@ To change the list of source files run synchronize.py
 		<ClInclude Include="..\engine\action\spell_base.hpp" />
 		<ClInclude Include="..\engine\action\variable.hpp" />
 		<ClInclude Include="..\engine\buff\sc_buff.hpp" />
+		<ClInclude Include="..\engine\class_modules\apl\apl_death_knight.hpp" />
+		<ClInclude Include="..\engine\class_modules\apl\mage.hpp" />
 		<ClInclude Include="..\engine\class_modules\class_module.hpp" />
 		<ClInclude Include="..\engine\class_modules\paladin\sc_paladin.hpp" />
 		<ClInclude Include="..\engine\class_modules\priest\sc_priest.hpp" />
@@ -60,6 +62,7 @@ To change the list of source files run synchronize.py
 		<ClInclude Include="..\engine\dbc\spell_query\spell_data_expr.hpp" />
 		<ClInclude Include="..\engine\dbc\spelltext_data.hpp" />
 		<ClInclude Include="..\engine\dbc\talent_data.hpp" />
+		<ClInclude Include="..\engine\dbc\temporary_enchant.hpp" />
 		<ClInclude Include="..\engine\interfaces\bcp_api.hpp" />
 		<ClInclude Include="..\engine\interfaces\sc_http.hpp" />
 		<ClInclude Include="..\engine\interfaces\sc_http_curl.hpp" />
@@ -190,6 +193,8 @@ To change the list of source files run synchronize.py
 		<ClCompile Include="..\engine\action\snapshot_stats.cpp" />
 		<ClCompile Include="..\engine\action\variable.cpp" />
 		<ClCompile Include="..\engine\buff\sc_buff.cpp" />
+		<ClCompile Include="..\engine\class_modules\apl\apl_death_knight.cpp" />
+		<ClCompile Include="..\engine\class_modules\apl\mage.cpp" />
 		<ClCompile Include="..\engine\class_modules\paladin\sc_paladin.cpp" />
 		<ClCompile Include="..\engine\class_modules\paladin\sc_paladin_holy.cpp" />
 		<ClCompile Include="..\engine\class_modules\paladin\sc_paladin_protection.cpp" />
@@ -246,6 +251,7 @@ To change the list of source files run synchronize.py
 		<ClCompile Include="..\engine\dbc\spell_item_enchantment.cpp" />
 		<ClCompile Include="..\engine\dbc\spelltext_data.cpp" />
 		<ClCompile Include="..\engine\dbc\talent_data.cpp" />
+		<ClCompile Include="..\engine\dbc\temporary_enchant.cpp" />
 		<ClCompile Include="..\engine\interfaces\bcp_api.cpp" />
 		<ClCompile Include="..\engine\interfaces\sc_http.cpp" />
 		<ClCompile Include="..\engine\interfaces\sc_http_curl.cpp" />

@@ -13,6 +13,7 @@
 #include "interfaces/sc_http.hpp"
 #include "item/item.hpp"
 #include "player/azerite_data.hpp"
+#include "player/covenant.hpp"
 #include "player/sc_player.hpp"
 #include "sc_enums.hpp"
 #include "sim/sc_sim.hpp"
@@ -40,6 +41,7 @@ namespace { // UNNAMED NAMESPACE
 // computing it using the in-game rules)
 static constexpr auto __ILEVEL_OVERRIDE_MAP = util::make_static_set<unsigned>( {
   167555U, // Pocket-Sized Computation Device
+  158075U, // Heart of Azeroth
 } );
 
 struct player_spec_t
@@ -50,6 +52,7 @@ struct player_spec_t
   std::string local_json_spec;
   std::string local_json_equipment;
   std::string local_json_media;
+  std::string local_json_soulbinds;
 };
 
 static constexpr util::string_view GLOBAL_OAUTH_ENDPOINT_URI = "https://{}.battle.net/oauth/token";
@@ -101,9 +104,13 @@ std::vector<std::string> token_paths()
 
   if ( const char* home_drive = getenv( "HOMEDRIVE" ) )
   {
-    if ( const char* home_path = getenv( "HOMEPATH" ) )
+    if ( const char* home_path_ansi = getenv( "HOMEPATH" ) )
     {
-      paths.push_back( std::string( home_drive ) + std::string( home_path ) + "/simc-apitoken" );
+      std::string home_path = std::string( home_drive ) + std::string( home_path_ansi ) + "/simc-apitoken";
+#ifdef SC_WINDOWS
+      home_path = io::ansi_to_utf8( home_path.c_str() );
+#endif
+      paths.push_back( home_path );
     }
   }
 
@@ -595,6 +602,15 @@ void parse_items( player_t* p, const player_spec_t& spec, const std::string& url
       }
     }
 
+    if ( slot_data.HasMember( "modified_crafting_stat" ) )
+    {
+      for ( auto idx = 0u, end = slot_data[ "modified_crafting_stat" ].Size(); idx < end; ++idx )
+      {
+        const auto& stat_data = slot_data[ "modified_crafting_stat" ][ idx ];
+        item.parsed.crafted_stat_mod.push_back( stat_data[ "id" ].GetInt() );
+      }
+    }
+
     azerite::parse_blizzard_azerite_information( item, slot_data );
 
     auto it = __ILEVEL_OVERRIDE_MAP.find( item.parsed.data.id );
@@ -603,6 +619,49 @@ void parse_items( player_t* p, const player_spec_t& spec, const std::string& url
       item.option_ilevel_str =  util::to_string( slot_data[ "level" ][ "value" ].GetUint() );
     }
   }
+}
+
+void parse_soulbinds( player_t*            p,
+                      const player_spec_t& spec,
+                      const rapidjson::Value&   covenant_info,
+                      cache::behavior_e    caching )
+{
+  rapidjson::Document soulbinds_data;
+
+  if ( spec.local_json.empty() && spec.local_json_soulbinds.empty() )
+  {
+    std::string url;
+
+    if ( !covenant_info.HasMember( "soulbinds" ) )
+    {
+      return;
+    }
+
+    url = covenant_info[ "soulbinds" ][ "href" ].GetString();
+
+    try
+    {
+      download( p->sim, soulbinds_data, p->region_str, url + "&locale=en_US", caching );
+    }
+    catch(const std::exception&)
+    {
+      std::throw_with_nested(std::runtime_error(fmt::format("Unable to download soulbinds JSON from '{}'.", url )));
+    }
+  }
+  else if ( !spec.local_json_soulbinds.empty() )
+  {
+    try
+    {
+      parse_file( p->sim, spec.local_json_soulbinds, soulbinds_data );
+    }
+    catch(const std::exception&)
+    {
+      std::throw_with_nested( std::runtime_error( fmt::format( "Unable to parse soulbinds information JSON from '{}'.",
+        spec.local_json_soulbinds ) ) );
+    }
+  }
+
+  covenant::parse_blizzard_covenant_information( p, soulbinds_data );
 }
 
 void parse_media( player_t*            p,
@@ -789,6 +848,11 @@ player_t* parse_player( sim_t*            sim,
   if ( profile.HasMember( "equipment" ) )
   {
     parse_items( p, player, profile[ "equipment" ][ "href" ].GetString(), caching );
+  }
+
+  if ( profile.HasMember( "covenant_progress" ) )
+  {
+    parse_soulbinds( p, player, profile[ "covenant_progress" ], caching );
   }
 
   if ( ! p -> server_str.empty() )
@@ -1133,10 +1197,11 @@ player_t* bcp_api::from_local_json( sim_t*             sim,
 
   player_spec.origin = value;
 
-  std::array<std::unique_ptr<option_t>, 3> options { {
+  std::array<std::unique_ptr<option_t>, 4> options { {
     opt_string( "spec", player_spec.local_json_spec ),
     opt_string( "equipment", player_spec.local_json_equipment ),
     opt_string( "media", player_spec.local_json_media ),
+    opt_string( "soulbinds", player_spec.local_json_soulbinds ),
   } };
 
   std::string options_str;

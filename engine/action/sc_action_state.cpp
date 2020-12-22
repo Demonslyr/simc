@@ -185,6 +185,7 @@ std::ostringstream& action_state_t::debug_str( std::ostringstream& s )
   s << " proc_type=" << util::proc_type_string( proc_type() );
   s << " exec_proc_type=" << util::proc_type2_string( execute_proc_type2() );
   s << " impact_proc_type=" << util::proc_type2_string( impact_proc_type2() );
+  s << " interrupt_proc_type=" << util::proc_type2_string( interrupt_proc_type2() );
 
   s << std::dec;
 
@@ -312,11 +313,13 @@ std::string action_state_t::flags_to_str( unsigned flags )
 // damage/heal)
 proc_types action_state_t::proc_type() const
 {
-  if (result_type == result_amount_type::DMG_DIRECT || result_type == result_amount_type::HEAL_DIRECT)
+  if ( result_type == result_amount_type::HEAL_DIRECT && action->direct_tick )
+    return PROC1_PERIODIC_HEAL;
+  else if ( result_type == result_amount_type::DMG_DIRECT || result_type == result_amount_type::HEAL_DIRECT )
     return action->proc_type();
-  else if (result_type == result_amount_type::DMG_OVER_TIME)
+  else if ( result_type == result_amount_type::DMG_OVER_TIME )
     return PROC1_PERIODIC;
-  else if (result_type == result_amount_type::HEAL_OVER_TIME)
+  else if ( result_type == result_amount_type::HEAL_OVER_TIME )
     return PROC1_PERIODIC_HEAL;
 
   return PROC1_INVALID;

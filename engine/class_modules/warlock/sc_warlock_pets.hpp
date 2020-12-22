@@ -12,33 +12,44 @@ namespace warlock
 // Forward declarations
 struct warlock_t;
 struct warlock_td_t;
+struct warlock_pet_t;
 
-namespace pets
+struct warlock_pet_td_t : public actor_target_data_t
 {
+  propagate_const<buff_t*> debuff_infernal_brand;
+
+  warlock_pet_t& pet;
+  warlock_pet_td_t( player_t* target, warlock_pet_t& p );
+};
+
 struct warlock_pet_t : public pet_t
 {
-  action_t* special_action;
-  action_t* special_action_two;
+  action_t* special_action; //Used for Felguard's Axe Toss
+  action_t* special_action_two; //Does any pet currently need this?
   melee_attack_t* melee_attack;
   stats_t* summon_stats;
-  spell_t* ascendance;
+  spell_t* ascendance; //TODO: SL Beta - Is this outdated?
 
   struct buffs_t
   {
     propagate_const<buff_t*> embers;  // Infernal Shard Generation
-    propagate_const<buff_t*> demonic_strength;
-    propagate_const<buff_t*> demonic_consumption;
-    propagate_const<buff_t*> grimoire_of_service;
+    propagate_const<buff_t*> demonic_strength; //Talent that buffs Felguard(s)
+    propagate_const<buff_t*> demonic_consumption; //Talent that buffs Demonic Tyrant
+    propagate_const<buff_t*> grimoire_of_service; //Buff used by Grimoire: Felguard talent
+    propagate_const<buff_t*> grim_inquisitors_dread_calling; //Buff used by SL Legendary
+    propagate_const<buff_t*> demonic_synergy; //Buff used by SL Legendary (Relic of Demonic Synergy)
   } buffs;
 
+  //TODO: SL Beta - this struct and spell_t are unused
   struct active_t
   {
     spell_t* bile_spit;
   } active;
 
+  //TODO: SL Beta - these booleans may be unused
   bool is_demonbolt_enabled = true;
   bool is_lord_of_flames    = false;
-  bool is_warlock_pet       = true;
+  bool is_main_pet          = false;
   int dreadbite_executes    = 0;
 
   warlock_pet_t( warlock_t* owner, util::string_view pet_name, pet_e pt, bool guardian = false );
@@ -52,8 +63,26 @@ struct warlock_pet_t : public pet_t
   void create_buffs_pets();
   void create_buffs_demonology();
   void init_spells_pets();
+  void init_special_effects() override;
 
   void create_buffs_destruction();
+
+  target_specific_t<warlock_pet_td_t> target_data;
+
+  const warlock_pet_td_t* find_target_data( const player_t* target ) const override
+  {
+    return target_data[ target ];
+  }
+
+  warlock_pet_td_t* get_target_data( player_t* target ) const override
+  {
+    warlock_pet_td_t*& td = target_data[ target ];
+    if ( !td )
+    {
+      td = new warlock_pet_td_t( target, const_cast<warlock_pet_t&>( *this ) );
+    }
+    return td;
+  }
 
   resource_e primary_resource() const override
   {
@@ -103,6 +132,8 @@ struct warlock_pet_t : public pet_t
   }
 };
 
+namespace pets
+{
 /**
  * A simple warlock pet that has a potential melee attack, and a single on-cooldown special ability
  * that it uses on cooldown.
@@ -173,14 +204,24 @@ public:
     }
   }
 
-  warlock_td_t* td( player_t* t )
+  warlock_td_t* owner_td( player_t* t )
   {
     return p()->o()->get_target_data( t );
   }
 
-  const warlock_td_t* td( player_t* t ) const
+  const warlock_td_t* owner_td( player_t* t ) const
   {
     return p()->o()->get_target_data( t );
+  }
+
+  warlock_pet_td_t* pet_td( player_t* t )
+  {
+    return p()->get_target_data( t );
+  }
+
+  const warlock_pet_td_t* pet_td( player_t* t ) const
+  {
+    return p()->get_target_data( t );
   }
 };
 

@@ -300,6 +300,7 @@ action_t::action_t( action_e ty, util::string_view token, player_t* p, const spe
     harmful( true ),
     proc(),
     is_interrupt( false ),
+    is_precombat(),
     initialized(),
     may_hit( true ),
     may_miss(),
@@ -363,6 +364,7 @@ action_t::action_t( action_e ty, util::string_view token, player_t* p, const spe
     base_recharge_multiplier( 1.0 ),
     base_teleport_distance(),
     travel_speed(),
+    travel_delay(),
     energize_amount(),
     movement_directionality( movement_direction_type::NONE ),
     parent_dot(),
@@ -383,6 +385,7 @@ action_t::action_t( action_e ty, util::string_view token, player_t* p, const spe
     last_resource_cost(),
     num_targets_hit(),
     marker(),
+    last_used(),
     option(),
     interrupt_global( false ),
     if_expr(),
@@ -511,7 +514,7 @@ static bool is_direct_damage_effect( const spelleffect_data_t& effect )
 static bool is_periodic_damage_effect( const spelleffect_data_t& effect )
 {
   static constexpr effect_subtype_t subtypes[] = {
-    A_PERIODIC_DAMAGE, A_PERIODIC_LEECH, A_PERIODIC_HEAL
+    A_PERIODIC_DAMAGE, A_PERIODIC_LEECH, A_PERIODIC_HEAL, A_PERIODIC_HEAL_PCT
   };
   return effect.type() == E_APPLY_AURA &&
          range::contains( subtypes, effect.subtype() );
@@ -541,7 +544,6 @@ void action_t::parse_spell_data( const spell_data_t& spell_data )
   id                = spell_data.id();
   base_execute_time = spell_data.cast_time();
   range             = spell_data.max_range();
-  travel_speed      = spell_data.missile_speed();
   trigger_gcd       = spell_data.gcd();
   school            = spell_data.get_school_type();
 
@@ -552,6 +554,11 @@ void action_t::parse_spell_data( const spell_data_t& spell_data )
   tick_on_application = spell_data.flags( spell_attribute::SX_TICK_ON_APPLICATION );
   may_miss            = !spell_data.flags( spell_attribute::SX_ALWAYS_HIT );
   may_dodge = may_parry = may_block = !spell_data.flags( spell_attribute::SX_NO_D_P_B );
+
+  if ( spell_data.flags( spell_attribute::SX_FIXED_TRAVEL_TIME ) )
+    travel_delay = spell_data.missile_speed();
+  else
+    travel_speed = spell_data.missile_speed();
 
   if ( has_direct_damage_effect( spell_data ) )
     may_crit = !spell_data.flags( spell_attribute::SX_CANNOT_CRIT );
@@ -731,7 +738,7 @@ void action_t::parse_effect_data( const spelleffect_data_t& spelleffect_data )
         case A_PERIODIC_DAMAGE_PERCENT:
         case A_PERIODIC_DUMMY:
         case A_PERIODIC_TRIGGER_SPELL:
-        case A_OBS_MOD_HEALTH:
+        case A_PERIODIC_HEAL_PCT:
           if ( spelleffect_data.period() > timespan_t::zero() )
           {
             base_tick_time = spelleffect_data.period();
@@ -939,7 +946,7 @@ double action_t::base_cost() const
  */
 double action_t::cost() const
 {
-  if ( !harmful && !player->in_combat )
+  if ( !harmful && is_precombat )
     return 0;
 
   resource_e cr = current_resource();
@@ -991,7 +998,7 @@ double action_t::cost_per_tick( resource_e r ) const
 
 timespan_t action_t::gcd() const
 {
-  if ( ( !harmful && !player->in_combat ) || trigger_gcd == timespan_t::zero() )
+  if ( trigger_gcd == timespan_t::zero() )
     return timespan_t::zero();
 
   timespan_t gcd_ = trigger_gcd;
@@ -1071,19 +1078,24 @@ double action_t::false_negative_pct() const
 
 timespan_t action_t::travel_time() const
 {
-  if ( travel_speed == 0 )
+  if ( travel_speed == 0 && travel_delay == 0 )
     return timespan_t::zero();
 
-  double distance;
-  distance = player->get_player_distance( *target );
+  double t = travel_delay;
 
-  if ( execute_state && execute_state->target )
-    distance += execute_state->target->height;
+  if ( travel_speed > 0 )
+  {
+    double distance;
+    distance = player->get_player_distance( *target );
 
-  if ( distance == 0 )
-    return timespan_t::zero();
+    if ( execute_state && execute_state->target )
+      distance += execute_state->target->height;
 
-  double t = distance / travel_speed;
+    if ( distance == 0 )
+      return timespan_t::zero();
+
+    t += distance / travel_speed;
+  }
 
   double v = sim->travel_variance;
 
@@ -1096,7 +1108,7 @@ timespan_t action_t::travel_time() const
 double action_t::total_crit_bonus( const action_state_t* state ) const
 {
   double crit_multiplier_buffed = crit_multiplier * composite_player_critical_multiplier( state );
-  
+
   double base_crit_bonus = crit_bonus;
   if ( sim->pvp_crit )
     base_crit_bonus -= 0.5;  // Players in pvp take 150% critical hits baseline.
@@ -1123,14 +1135,16 @@ double action_t::calculate_weapon_damage( double attack_power ) const
   if ( !weapon || weapon_multiplier <= 0 )
     return 0;
 
-  double dmg              = sim->averaged_range( weapon->min_dmg, weapon->max_dmg ) + weapon->bonus_dmg;
+  // The weapon damage roll (and its bonus damage) is affected by attak power modifiers just like regular attack power
+  double capm             = player -> composite_attack_power_multiplier();
+  double dmg              = capm * ( sim->averaged_range( weapon->min_dmg, weapon->max_dmg ) + weapon->bonus_dmg );
   timespan_t weapon_speed = normalize_weapon_speed ? weapon->get_normalized_speed() : weapon->swing_time;
   double power_damage     = weapon_speed.total_seconds() * weapon_power_mod * attack_power;
   double total_dmg        = dmg + power_damage;
 
-  sim->print_debug("{} weapon damage for {}: base=({} to {}) total={} weapon_damage={} bonus_damage={} "
+  sim->print_debug("{} weapon damage for {}: base=({} to {}) total={} weapon_damage={} bonus_damage={} multiplier={}"
       "speed={} power_damage={} ap={}",
-      *player, *this, weapon->min_dmg, weapon->max_dmg, total_dmg, dmg, weapon->bonus_dmg,
+      *player, *this, weapon->min_dmg, weapon->max_dmg, total_dmg, dmg, weapon->bonus_dmg, capm,
       weapon_speed, power_damage, attack_power );
 
   return total_dmg;
@@ -1332,17 +1346,12 @@ double action_t::calculate_crit_damage_bonus( action_state_t* state ) const
   return state->result_total;
 }
 
-double action_t::target_armor(player_t* t) const
-{
-  return t->cache.armor();
-}
-
 result_amount_type action_t::report_amount_type( const action_state_t* state ) const
 { return state -> result_type; }
 
 double action_t::composite_attack_power() const
 {
-  return player->composite_melee_attack_power(get_attack_power_type());
+  return player->composite_melee_attack_power_by_type(get_attack_power_type());
 }
 
 double action_t::composite_spell_power() const
@@ -1357,6 +1366,11 @@ double action_t::composite_spell_power() const
   }
 
   return spell_power;
+}
+
+double action_t::composite_target_armor( player_t* target ) const
+{
+  return player->composite_player_target_armor( target );
 }
 
 double action_t::composite_target_crit_chance( player_t* target ) const
@@ -1618,7 +1632,7 @@ void action_t::execute()
 
   if ( player->resource_regeneration == regen_type::DYNAMIC)
   {
-    player->do_dynamic_regen();
+    player->do_dynamic_regen( true );
   }
 
   update_ready();  // Based on testing with warrior mechanics, Blizz updates cooldowns before consuming resources.
@@ -1706,6 +1720,8 @@ void action_t::execute()
 
   if ( repeating && !proc )
     schedule_execute();
+
+  last_used = sim->current_time();
 }
 
 void action_t::tick( dot_t* d )
@@ -1738,13 +1754,13 @@ void action_t::tick( dot_t* d )
 
     // Apply the last tick factor from the DoT to the base damage multipliers for partial ticks
     // 6/23/2018 -- Revert the previous logic of overwriting the da modifiers with ta modifiers
-    tick_state->da_multiplier *= d->get_last_tick_factor();
-    tick_state->ta_multiplier *= d->get_last_tick_factor();
+    tick_state->da_multiplier *= d->get_tick_factor();
+    tick_state->ta_multiplier *= d->get_tick_factor();
 
     tick_action->schedule_execute( tick_state );
 
     sim->print_log("{} {} ticks ({} of {}) {}",
-        *player, *this, d->current_tick, d->num_ticks, *d->target );
+        *player, *this, d->current_tick, d->num_ticks(), *d->target );
   }
   else
   {
@@ -1753,7 +1769,7 @@ void action_t::tick( dot_t* d )
     if ( tick_may_crit && rng().roll( d->state->composite_crit_chance() ) )
       d->state->result = RESULT_CRIT;
 
-    d->state->result_amount = calculate_tick_amount( d->state, d->get_last_tick_factor() * d->current_stack() );
+    d->state->result_amount = calculate_tick_amount( d->state, d->get_tick_factor() * d->current_stack() );
 
     assess_damage( amount_type( d->state, true ), d->state );
 
@@ -1761,13 +1777,13 @@ void action_t::tick( dot_t* d )
       d->state->debug();
   }
 
-  if ( energize_type_() == action_energize::PER_TICK && d->get_last_tick_factor() >= 1.0)
+  if ( energize_type_() == action_energize::PER_TICK && d->get_tick_factor() >= 1.0)
   {
     // Partial tick is not counted for resource gain
     gain_energize_resource( energize_resource_(), composite_energize_amount( d->state ), gain );
   }
 
-  stats->add_tick( d->time_to_tick, d->state->target );
+  stats->add_tick( d->time_to_tick(), d->state->target );
 
   player->trigger_ready();
 }
@@ -1964,6 +1980,11 @@ void action_t::schedule_execute( action_state_t* execute_state )
         player->off_hand_attack->execute_event->reschedule( time_to_next_hit );
       }
     }
+
+    if ( player->resource_regeneration == regen_type::DYNAMIC )
+    {
+      player->do_dynamic_regen( true );
+    }
   }
 }
 
@@ -2036,7 +2057,7 @@ void action_t::update_ready( timespan_t cd_duration /* = timespan_t::min() */ )
 
 bool action_t::usable_moving() const
 {
-  if ( player->buffs.norgannons_foresight_ready && player->buffs.norgannons_foresight_ready->check() )
+  if ( player->buffs.norgannons_sagacity && player->buffs.norgannons_sagacity->check() )
     return true;
 
   if ( execute_time() > timespan_t::zero() )
@@ -2433,8 +2454,24 @@ void action_t::init()
     else
       player->precombat_action_list.push_back( this );
   }
-  else if ( !( background || sequence ) && action_list )
-    player->find_action_priority_list( action_list->name_str )->foreground_action_list.push_back( this );
+  else if ( action_list && action_list->name_str != "precombat" )
+  {
+    action_priority_list_t* apl = player->find_action_priority_list( action_list->name_str );
+    if ( !( background || sequence ) )
+    {
+      apl->foreground_action_list.push_back( this );
+    }
+    // Special case for disabled actions that are preceded by pool_resource,for_next=1 lines
+    // If we are skipping adding the action to the foreground_action_list above, we also need to disable the pool_resource entry
+    else if ( apl->foreground_action_list.size() > 0 &&
+              apl->foreground_action_list.back()->name_str == "pool_resource"  &&
+              util::str_in_str_ci( apl->foreground_action_list.back()->signature_str, "for_next=1" ) )
+    {
+      sim->print_debug( "{} pruning action '{}' due to action {} being disabled", *player, apl->foreground_action_list.back()->signature_str, *this );
+      apl->foreground_action_list.back()->background = true;
+      apl->foreground_action_list.pop_back();
+    }
+  }
 
   initialized = true;
 
@@ -2582,6 +2619,9 @@ void action_t::init_finished()
             option.cancel_if_expr_str ) );
     }
   }
+
+  if ( action_list && action_list->name_str == "precombat" )
+    is_precombat = true;
 }
 
 void action_t::reset()
@@ -2598,6 +2638,9 @@ void action_t::reset()
   interrupt_immediate_occurred = false;
   travel_events.clear();
   target = default_target;
+  last_used = timespan_t::min();
+
+  target_cache.is_valid = false;
 
   if( player->nth_iteration() == 1 )
   {
@@ -2796,6 +2839,9 @@ std::unique_ptr<expr_t> action_t::create_expression( util::string_view name_str 
   if ( name_str == "cast_time" )
     return make_mem_fn_expr( name_str, *this, &action_t::execute_time );
 
+  if ( name_str == "ready" )
+    return make_mem_fn_expr( name_str, *this, &action_t::ready );
+
   if ( name_str == "usable" )
     return make_mem_fn_expr( name_str, *cooldown, &cooldown_t::is_ready );
 
@@ -2892,26 +2938,6 @@ std::unique_ptr<expr_t> action_t::create_expression( util::string_view name_str 
 
   if ( auto q = dot_t::create_expression( nullptr, this, this, name_str, true ) )
     return q;
-
-  if ( name_str == "miss_react" )
-  {
-    struct miss_react_expr_t : public action_expr_t
-    {
-      miss_react_expr_t( action_t& a ) : action_expr_t( "miss_react", a )
-      {
-      }
-      double evaluate() override
-      {
-        dot_t* dot = action.find_dot( action.target );
-        if ( dot && ( dot->miss_time < timespan_t::zero() || action.sim->current_time() >= ( dot->miss_time ) ) )
-          return true;
-        else
-          return false;
-      }
-    };
-    return std::make_unique<miss_react_expr_t>( *this );
-
-  }
 
   if ( name_str == "cooldown_react" )
   {
@@ -3122,6 +3148,36 @@ std::unique_ptr<expr_t> action_t::create_expression( util::string_view name_str 
 
       return 0.0;
     } );
+  }
+
+  if ( name_str == "last_used" )
+  {
+    std::vector<action_t*> last_used_list;
+    for ( size_t i = 0; i < player->action_list.size(); ++i )
+    {
+      action_t* action = player->action_list[ i ];
+      if ( action->name_str == this->name_str )
+        last_used_list.push_back( action );
+    }
+
+    struct last_used_expr_t : public expr_t
+    {
+      const std::vector<action_t*> action_list;
+      last_used_expr_t( const std::vector<action_t*>& al ) : expr_t( "last_used" ), action_list( al )
+      {
+      }
+      double evaluate() override
+      {
+        timespan_t t = timespan_t::min();
+        for ( size_t i = 0; i < action_list.size(); i++ )
+        {
+          if ( action_list[ i ]->last_used > t )
+            t = action_list[ i ]->last_used;
+        }
+        return t.total_seconds();
+      }
+    };
+    return std::make_unique<last_used_expr_t>( last_used_list );
   }
 
   auto splits = util::string_split<util::string_view>( name_str, "." );
@@ -3528,7 +3584,7 @@ std::unique_ptr<expr_t> action_t::create_expression( util::string_view name_str 
     std::vector<action_t*> in_flight_list;
     bool in_flight_singleton = ( splits[ 0 ] == "in_flight" ||
       splits[ 0 ] == "in_flight_to_target" || splits[ 0 ] == "in_flight_remains" );
-    auto action_name  = ( in_flight_singleton ) ? name_str : splits[ 1 ];
+    auto action_name  = ( in_flight_singleton ) ? this->name_str : splits[ 1 ];
     for ( size_t i = 0; i < player->action_list.size(); ++i )
     {
       action_t* action = player->action_list[ i ];
@@ -3717,7 +3773,7 @@ void action_t::snapshot_internal( action_state_t* state, unsigned flags, result_
     state->target_mitigation_ta_multiplier = composite_target_mitigation( state->target, get_school() );
 
   if ( flags & STATE_TGT_ARMOR )
-    state->target_armor = target_armor( state->target );
+    state->target_armor = composite_target_armor( state->target );
 }
 
 timespan_t action_t::composite_dot_duration( const action_state_t* s ) const
@@ -3798,12 +3854,12 @@ void action_t::impact( action_state_t* s )
 void action_t::trigger_dot( action_state_t* s )
 {
   timespan_t duration = composite_dot_duration( s );
-  if ( duration <= timespan_t::zero() && ( !tick_zero || !tick_on_application ) )
+  if ( duration <= timespan_t::zero() )
     return;
 
   // To simulate precasting HoTs, remove one tick worth of duration if precombat.
   // We also add a fake zero_tick in dot_t::check_tick_zero().
-  if ( !harmful && !player->in_combat && ( !tick_zero || !tick_on_application ) )
+  if ( !harmful && is_precombat && !tick_zero && !tick_on_application )
     duration -= tick_time( s );
 
   dot_t* dot = get_dot( s->target );
@@ -3887,28 +3943,14 @@ void action_t::do_teleport( action_state_t* state )
  */
 timespan_t action_t::calculate_dot_refresh_duration( const dot_t* dot, timespan_t triggered_duration ) const
 {
-  if ( !channeled )
-  {
-    // WoD Pandemic
-    // New WoD Formula: Get no malus during the last 30% of the dot.
-    return std::min( triggered_duration * 0.3, dot->remains() ) + triggered_duration;
-  }
-  else
-  {
-    return dot->time_to_next_tick() + triggered_duration;
-  }
+  // WoD Pandemic
+  // New WoD Formula: Get no malus during the last 30% of the dot.
+  return std::min( triggered_duration * 0.3, dot->remains() ) + triggered_duration;
 }
 
 bool action_t::dot_refreshable( const dot_t* dot, timespan_t triggered_duration ) const
 {
-  if ( !channeled )
-  {
-    return dot->remains() <= triggered_duration * 0.3;
-  }
-  else
-  {
-    return dot->remains() <= dot->time_to_next_tick();
-  }
+  return dot->remains() <= triggered_duration * 0.3;
 }
 
 call_action_list_t::call_action_list_t( player_t* player, util::string_view options_str )
@@ -4027,6 +4069,9 @@ bool action_t::consume_cost_per_tick( const dot_t& /* dot */ )
     sim->print_debug( "{} {} ticking cost ends because dot is no longer ticking.", *player, *this );
     return false;
   }
+
+  if ( player->resource_regeneration == regen_type::DYNAMIC )
+    player->do_dynamic_regen( true );
 
   // Consume resources
   /*
@@ -4293,6 +4338,12 @@ rng::rng_t& action_t::rng() const
  */
 void action_t::acquire_target( retarget_source /* event */, player_t* /* context */, player_t* candidate_target )
 {
+  // Reset target cache every time target acquisition occurs for AOE spells
+  if ( n_targets() != 0 )
+  {
+    target_cache.is_valid = false;
+  }
+
   // Don't change targets if they are not of the same generic type (both enemies, or both friendlies)
   if ( target && candidate_target && target->is_enemy() != candidate_target->is_enemy() )
   {
@@ -4313,6 +4364,12 @@ void action_t::acquire_target( retarget_source /* event */, player_t* /* context
     return;
   }
 
+  // Don't swap targets if the action's current target is still alive
+  if ( !target->is_sleeping() && !target->debuffs.invulnerable->check() )
+  {
+    return;
+  }
+
   if ( target != candidate_target )
   {
     if ( sim->debug )
@@ -4321,7 +4378,6 @@ void action_t::acquire_target( retarget_source /* event */, player_t* /* context
                              target ? target->name() : "(none)", candidate_target->name() );
     }
     target                = candidate_target;
-    target_cache.is_valid = false;
   }
 }
 
@@ -4661,7 +4717,7 @@ void action_t::apply_affecting_effect( const spelleffect_data_t& effect )
   if ( !effect.ok() || effect.type() != E_APPLY_AURA )
     return;
 
-  if ( !data().affected_by_all( *player->dbc, effect ) )
+  if ( !data().affected_by_all( effect ) )
   {
     return;
   }
@@ -4724,10 +4780,13 @@ void action_t::apply_affecting_effect( const spelleffect_data_t& effect )
         break;
 
       case P_COOLDOWN:
-        cooldown->duration += effect.time_value();
-        if ( cooldown->duration < timespan_t::zero() )
-          cooldown->duration = timespan_t::zero();
-        sim->print_debug( "{} cooldown duration increase by {} to {}", *this, effect.time_value(), cooldown->duration );
+        if ( cooldown->action == this )
+        {
+          cooldown->duration += effect.time_value();
+          if ( cooldown->duration < timespan_t::zero() )
+            cooldown->duration = timespan_t::zero();
+          sim->print_debug( "{} cooldown duration increase by {} to {}", *this, effect.time_value(), cooldown->duration );
+        }
         break;
 
       case P_RESOURCE_COST:
@@ -4877,26 +4936,32 @@ void action_t::apply_affecting_effect( const spelleffect_data_t& effect )
             break;
         }
         break;
-      
+
       default:
         break;
     }
   }
   // Category-based Auras
-  else if ( data().category() == as<unsigned>( effect.misc_value1() ) )
+  else if ( data().affected_by_category( effect ) )
   {
     switch ( effect.subtype() )
     {
       case A_MODIFY_CATEGORY_COOLDOWN:
-        cooldown->duration += effect.time_value();
-        if ( cooldown->duration < timespan_t::zero() )
-          cooldown->duration = timespan_t::zero();
-        sim->print_debug( "{} cooldown duration modified by {}", *this, effect.time_value() );
+        if ( cooldown->action == this )
+        {
+          cooldown->duration += effect.time_value();
+          if ( cooldown->duration < timespan_t::zero() )
+            cooldown->duration = timespan_t::zero();
+          sim->print_debug( "{} cooldown duration modified by {}", *this, effect.time_value() );
+        }
         break;
 
       case A_MOD_MAX_CHARGES:
-        cooldown->charges += as<int>( effect.base_value() );
-        sim->print_debug( "{} cooldown charges modified by {}", *this, as<int>( effect.base_value() ) );
+        if ( cooldown->action == this )
+        {
+          cooldown->charges += as<int>( effect.base_value() );
+          sim->print_debug( "{} cooldown charges modified by {}", *this, as<int>( effect.base_value() ) );
+        }
         break;
 
       case A_HASTED_CATEGORY:
@@ -4905,10 +4970,13 @@ void action_t::apply_affecting_effect( const spelleffect_data_t& effect )
         break;
 
       case A_MOD_RECHARGE_TIME:
-        cooldown->duration += effect.time_value();
-        if ( cooldown->duration < timespan_t::zero() )
-          cooldown->duration = timespan_t::zero();
-        sim->print_debug( "{} cooldown recharge time modified by {}", *this, effect.time_value() );
+        if ( cooldown->action == this )
+        {
+          cooldown->duration += effect.time_value();
+          if ( cooldown->duration < timespan_t::zero() )
+            cooldown->duration = timespan_t::zero();
+          sim->print_debug( "{} cooldown recharge time modified by {}", *this, effect.time_value() );
+        }
         break;
 
       case A_MOD_RECHARGE_MULTIPLIER:

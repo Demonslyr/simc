@@ -11,10 +11,12 @@
 #include "player/weapon.hpp"
 #include "sim/sc_sim.hpp"
 #include "dbc/item_database.hpp"
+#include "dbc/temporary_enchant.hpp"
 #include "sc_enums.hpp"
 #include "interfaces/wowhead.hpp"
 #include "interfaces/bcp_api.hpp"
 #include "player/unique_gear.hpp"
+#include "util/util.hpp"
 
 #include <sstream>
 
@@ -72,6 +74,7 @@ size_t parsed_item_data_t::add_effect( const item_effect_t& effect )
 item_t::parsed_input_t::parsed_input_t()
   : item_level( 0 ),
     enchant_id( 0 ),
+    temporary_enchant_id( 0 ),
     addon_id( 0 ),
     armor( 0 ),
     azerite_level( 0 ),
@@ -230,6 +233,10 @@ gear_stats_t item_t::total_stats() const
     });
 
     range::for_each( parsed.addon_stats, [ stat, to, &total_stats ]( const stat_pair_t& s ) {
+      if ( stat == s.stat ) total_stats.add_stat( to, s.value );
+    });
+
+    range::for_each( parsed.temp_enchant_stats, [ stat, to, &total_stats ]( const stat_pair_t& s ) {
       if ( stat == s.stat ) total_stats.add_stat( to, s.value );
     });
   }
@@ -426,6 +433,21 @@ void format_to( const item_t& item, fmt::format_context::iterator out )
     fmt::format_to( out, " enchant={{ {} }}", item.enchant_stats_str() );
   else if ( ! item.parsed.encoded_enchant.empty() )
     fmt::format_to( out, " enchant={{ {} }}", item.parsed.encoded_enchant );
+
+  if ( item.parsed.temporary_enchant_id > 0 )
+  {
+    if ( item.parsed.temp_enchant_stats.size() )
+    {
+      fmt::format_to( out, " temporary_enchant={{ {} }}",
+          item.stat_pairs_to_str( item.parsed.temp_enchant_stats ) );
+    }
+    else
+    {
+      const auto& temp_enchant = temporary_enchant_entry_t::find_by_enchant_id(
+          item.parsed.temporary_enchant_id, item.player->dbc->ptr );
+      fmt::format_to( out, " temporary_enchant={{ {} }}", temp_enchant.tokenized_name );
+    }
+  }
 
   for ( const special_effect_t* effect : item.parsed.special_effects )
     fmt::format_to( out, " effect={{ {} }}", *effect );
@@ -632,7 +654,7 @@ void item_t::parse_options()
     option_name_str = options_str.substr( 0, cut_pt );
   }
 
-  std::array<std::unique_ptr<option_t>, 32> options { {
+  std::array<std::unique_ptr<option_t>, 33> options { {
     opt_uint("id", parsed.data.id),
     opt_obsoleted("upgrade"),
     opt_string("stats", option_stats_str),
@@ -665,6 +687,7 @@ void item_t::parse_options()
     opt_string("azerite_powers", option_azerite_powers_str),
     opt_string("azerite_level", option_azerite_level_str),
     opt_string("context", DUMMY_CONTEXT),
+    opt_string("crafted_stats", option_crafted_stat_str)
   } };
 
   try
@@ -817,6 +840,52 @@ void item_t::parse_options()
 
   if ( ! option_azerite_level_str.empty() )
     parsed.azerite_level = util::to_unsigned( option_azerite_level_str );
+
+  if ( !option_crafted_stat_str.empty() )
+  {
+    try
+    {
+      auto split = util::string_split( option_crafted_stat_str, "/" );
+      for ( auto& stat_str : split )
+      {
+        int item_mod = ITEM_MOD_NONE;
+        if ( util::is_number( stat_str ) )
+        {
+          item_mod = util::to_int( stat_str );
+        }
+
+        if ( item_mod > 0 )
+        {
+          if ( util::translate_item_mod( item_mod ) != STAT_NONE )
+          {
+            parsed.crafted_stat_mod.push_back( item_mod );
+          }
+          else
+          {
+            sim->error( "Unsupported Blizzard item modifier {} on '{}'",
+              stat_str, name() );
+          }
+        }
+        else
+        {
+          auto stat_type = util::parse_stat_type( stat_str );
+          auto item_mod = util::translate_stat( stat_type );
+          if ( item_mod != ITEM_MOD_NONE )
+          {
+            parsed.crafted_stat_mod.push_back( item_mod );
+          }
+          else
+          {
+            throw std::invalid_argument( fmt::format( "Unknown stat mod {}", stat_str ) );
+          }
+        }
+      }
+    }
+    catch ( const std::exception& e )
+    {
+      std::throw_with_nested( std::runtime_error( "Crafted Stats" ) );
+    }
+  }
 }
 
 // item_t::initialize_data ==================================================
@@ -1013,6 +1082,32 @@ std::string item_t::encoded_item() const
     s << ",drop_level=" << parsed.drop_level;
   }
 
+  if ( ! option_crafted_stat_str.empty() )
+  {
+    s << ",crafted_stats=" << option_crafted_stat_str;
+  }
+  else if ( parsed.crafted_stat_mod.size() )
+  {
+    std::vector<std::string> strs;
+    range::for_each( parsed.crafted_stat_mod, [ &strs ]( int mod ) {
+      auto stat_type = util::translate_item_mod( mod );
+      // If for some reason we have an unknown stat mod on an item (allowed to happen with
+      // blizzard import), push it as a number instead of a stat string.
+      if ( stat_type == STAT_NONE )
+      {
+        strs.push_back( util::to_string( mod ) );
+      }
+      else
+      {
+        std::string stat_str = util::stat_type_abbrev( stat_type );
+        util::tolower( stat_str );
+        strs.push_back( stat_str );
+      }
+    } );
+
+    s << ",crafted_stats=" << util::string_join( strs, "/" );
+  }
+
   return s.str();
 }
 
@@ -1063,7 +1158,7 @@ std::string item_t::encoded_comment()
 
   if ( option_addon_str.empty() &&
        ( parsed.addon_stats.size() > 0 || ! parsed.encoded_addon.empty() ) )
-    s << "enchant=" << encoded_addon() << ",";
+    s << "addon=" << encoded_addon() << ",";
 
   if ( option_equip_str.empty() )
   {
@@ -1440,7 +1535,25 @@ void item_t::decode_stats()
     item_database::apply_item_scaling( *this, parsed.data.id_curve, player -> level() );
   }
 
-  for ( size_t i = 0; i < range::size( parsed.data.stat_type_e ); i++ )
+  // Apply crafted stats modifiers before applying stats. Crafted modifiers are applied
+  // directly to the "base stats" of the item, replacing the item_mod_type in question
+  // with an actual stat item_mod_type.
+  range::for_each( parsed.crafted_stat_mod, [ this ]( int crafted_mod ) {
+    auto it = range::find_if( parsed.data.stat_type_e, []( int item_mod ) {
+      return item_database::is_crafted_item_mod( item_mod );
+    } );
+
+    if ( it != parsed.data.stat_type_e.end() )
+    {
+      auto stat_type = util::translate_item_mod( crafted_mod );
+      player->sim->print_debug( "Player {} item '{}' modifying crafted stat type {} to '{}' (index={})",
+          player->name(), name(), *it,  util::stat_type_string( stat_type ),
+          std::distance( parsed.data.stat_type_e.begin(), it ) );
+      (*it) = crafted_mod;
+    }
+  } );
+
+  for ( size_t i = 0; i < parsed.data.stat_type_e.size(); i++ )
   {
     stat_e s = stat( i );
     if ( s == STAT_NONE )
@@ -1899,6 +2012,11 @@ bool item_t::download_item( item_t& item )
 
 void item_t::init_special_effects()
 {
+  if ( !active() )
+  {
+    return;
+  }
+
   special_effect_t proxy_effect( this );
 
   // Enchant
@@ -1910,6 +2028,10 @@ void item_t::init_special_effects()
   const item_enchantment_data_t& addon_data = player -> dbc->item_enchantment( parsed.addon_id );
   enchant::initialize_item_enchant( *this, parsed.addon_stats,
         SPECIAL_EFFECT_SOURCE_ADDON, addon_data );
+
+  const auto& temp_enchant_data = player->dbc->item_enchantment( parsed.temporary_enchant_id );
+  enchant::initialize_item_enchant( *this, parsed.temp_enchant_stats,
+        SPECIAL_EFFECT_SOURCE_TEMPORARY_ENCHANT, temp_enchant_data );
 
   // On-use effects
   for ( const item_effect_t& effect : parsed.data.effects )

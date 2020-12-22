@@ -172,9 +172,18 @@ bool item_database::apply_item_bonus( item_t& item, const item_bonus_entry_t& en
   {
     // Adjust ilevel, value is in 'value_1' field
     case ITEM_BONUS_ILEVEL:
+      // Blizzard has currently unknown means to disable adjust ilevel item bonus on
+      // items. Currently "best guess" how this occurs is item bonus 7215 enables it.
+      if ( range::find( item.parsed.bonus_id, 7215 ) != item.parsed.bonus_id.end() )
+      {
+        break;
+      }
+
       if ( item.sim -> debug )
+      {
         item.player -> sim -> print_debug( "Player {} item '{}' adjusting ilevel by {} (old={} new={})",
             item.player -> name(), item.name(), entry.value_1, item.parsed.data.level, item.parsed.data.level + entry.value_1 );
+      }
       item.parsed.data.level += entry.value_1;
       break;
     // Add new item stats. Value_1 has the item modifier, value_2 has the
@@ -341,8 +350,7 @@ bool item_database::apply_item_bonus( item_t& item, const item_bonus_entry_t& en
 
       for ( size_t i = 0, end = range::size( item.parsed.data.stat_type_e ); i < end; i++ )
       {
-        if ( item.parsed.data.stat_type_e[ i ] == ITEM_MOD_BONUS_STAT_1 ||
-             item.parsed.data.stat_type_e[ i ] == ITEM_MOD_BONUS_STAT_2 )
+        if ( item_database::is_crafted_item_mod( item.parsed.data.stat_type_e[ i ] ) )
         {
           item.player->sim->print_debug( "Player {} item '{}' modifying stat type to '{}' (index={})",
               item.player->name(), item.name(), util::stat_type_abbrev( stat_type ), i );

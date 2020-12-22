@@ -353,52 +353,47 @@ std::string report_helper::pretty_spell_text( const spell_data_t& default_spell,
 
 bool report_helper::check_gear( player_t& p, sim_t& sim )
 {
-  int max_ilevel_allowed         = 0;
-  int max_azerite_ilevel_allowed = 0;
-  int hoa_ilevel                 = 0;
-  unsigned hoa_level             = 0;
-  std::string tier_name          = "";
-  int third_ring_traits          = 2;
-  int max_cloak_ilevel           = 0;
+  // TODO: Add renown check?
+  std::string tier_name    = "";
+  unsigned int max_ilevel_allowed = 0;
+  unsigned int legendary_ilevel   = 0;
+  int max_gems                    = 0;
+  int max_conduit_rank            = 0;
+  int max_legendary_items         = 1;
+  int equipped_legendaries        = 0; // counter
+  int equipped_gems               = 0; // counter
 
   if ( p.report_information.save_str.find( "PR" ) != std::string::npos )
   {
-    max_ilevel_allowed         = 340;
-    max_azerite_ilevel_allowed = max_ilevel_allowed + 5;
-    hoa_ilevel                 = 347;
-    hoa_level                  = 27;
-    tier_name                  = "PR";
-    third_ring_traits          = 1;
+    tier_name          = "PR";
+    max_ilevel_allowed = 184;
+    legendary_ilevel   = 190;
+    max_conduit_rank   = 4;
   }
+  // DS copies T26 ruleset as of 2020-12-01
   else if ( p.report_information.save_str.find( "DS" ) != std::string::npos )
   {
-    max_ilevel_allowed         = 485;
-    max_azerite_ilevel_allowed = max_ilevel_allowed + 5;
-    hoa_ilevel                 = 493;
-    hoa_level                  = 80;
-    tier_name                  = "DS";
-    max_cloak_ilevel           = 500;
+    tier_name          = "DS";
+    max_ilevel_allowed = 233;
+    legendary_ilevel   = 235;
+    max_conduit_rank   = 7;
   }
-  else if ( p.report_information.save_str.find( "T25" ) != std::string::npos )
+  else if ( p.report_information.save_str.find( "T26" ) != std::string::npos )
   {
-    max_ilevel_allowed         = 485;
-    max_azerite_ilevel_allowed = max_ilevel_allowed + 5;
-    hoa_ilevel                 = 493;
-    hoa_level                  = 80;
-    tier_name                  = "T25";
-    max_cloak_ilevel           = 500;
+    tier_name          = "T26";
+    max_ilevel_allowed = 233;
+    legendary_ilevel   = 235;
+    max_gems           = 6;
+    max_conduit_rank   = 7;
   }
   else
   {
     return true;
   }
 
-  const unsigned azerite_tiers = 4;
-
   unsigned whitelisted_items[] = {
-      152636,         // Endless Tincture of Fractional Power
-      152632,         // Surging Alchemist Stone
-      159125, 159126  // Darkmoon Deck: Fathoms, Darkmoon Deck: Squalls
+      171323, // Spiritual Alchemy Stone
+      173096, 173069, 173087, 173078  // Darkmoon Decks: Indomitable, Putrescence, Voracity, Repose
   };
 
   const slot_e SLOT_OUT_ORDER[] = {
@@ -418,65 +413,15 @@ bool report_helper::check_gear( player_t& p, sim_t& sim )
   {
     item_t& item = p.items[ slot ];
 
-    // Heart of Azeroth
-    if ( slot == SLOT_NECK )
+    // Legendary items
+    if ( item.parsed.data.quality == ITEM_QUALITY_LEGENDARY )
     {
-      // Check azerite_level
-      if ( item.parsed.azerite_level != hoa_level )
-        sim.error( "Player {} has HoA of level {}, level for {} should be {}.\n", p.name(), item.parsed.azerite_level,
-                   tier_name, hoa_level );
-      // Check final item level (since it's not only computed from azerite_level)
-      if ( item.parsed.data.level != hoa_ilevel )
-        sim.error( "Player {} has HoA of ilevel {}, ilevel for {} should be {}.\n", p.name(), item.parsed.data.level,
-                   tier_name, hoa_ilevel );
-    }
-    // Azerite gear
-    else if ( slot == SLOT_HEAD || slot == SLOT_SHOULDERS || slot == SLOT_CHEST )
-    {
-      // Check if there is at least one azerite power declared
-      if ( item.parsed.azerite_ids.empty() )
-        sim.errorf( "Player %s has %s with no azerite added.", p.name(), util::slot_type_string( slot ) );
-      // Check if the azerite power declared does exists
-      for ( auto& azerite_id : item.parsed.azerite_ids )
+      equipped_legendaries++;
+      if ( item.item_level() != legendary_ilevel )
       {
-        const auto& power = p.dbc->azerite_power( azerite_id );
-        if ( power.id == 0 )
-          sim.error( "Player {} has {} with azerite power id {} which does not exists.", p.name(),
-                     util::slot_type_string( slot ), azerite_id );
+        sim.error( "Player {} has legendary item at slot {} of ilevel {}, legendary ilevel for {} is {}.\n", p.name(),
+                   util::slot_type_string( slot ), item.item_level(), tier_name, legendary_ilevel );
       }
-      // Check if there is more than one azerite power per tier (two for tier 3) and less than one for all tiers but
-      // tier 1
-      for ( unsigned i = 0; i < azerite_tiers; i++ )
-      {
-        int powers = 0;
-        for ( auto& azerite_id : item.parsed.azerite_ids )
-        {
-          const auto& power = p.dbc->azerite_power( azerite_id );
-          if ( power.tier == i )
-            powers++;
-        }
-        if ( i != 3 && powers > 1 )
-          sim.error( "Player {} has {} with {} azerite powers of tier {}, should have 1.", p.name(),
-                     util::slot_type_string( slot ), powers, i );
-        if ( i == 3 && powers > third_ring_traits )
-          sim.error( "Player {} has {} with {} azerite powers of tier {}, should have {}.", p.name(),
-                     util::slot_type_string( slot ), powers, i, third_ring_traits );
-        if ( i != 1 && powers == 0 )
-          sim.error( "Player {} has {} with 0 azerite power of tier {}, should have 1.", p.name(),
-                     util::slot_type_string( slot ), i );
-      }
-      // Check final item level (item level + bonus from azerite)
-      if ( item.parsed.data.level > max_azerite_ilevel_allowed )
-        sim.error( "Player {} has {} of ilevel {}, maximum allowed ilevel for {} is {}.\n", p.name(),
-                   util::slot_type_string( slot ), item.parsed.data.level, tier_name, max_azerite_ilevel_allowed );
-    }
-    // Legendary Cloak for T25 profile
-    else if ( slot == SLOT_BACK && ( tier_name == "T25" || tier_name == "DS" ) )
-    {
-      // Check item level
-      if ( item.parsed.data.level != max_cloak_ilevel )
-        sim.error( "Player {} has cloak of ilevel {}, ilevel for {} should be {}.\n", p.name(), item.parsed.data.level,
-                   tier_name, max_cloak_ilevel );
     }
     // Normal gear
     else
@@ -492,30 +437,22 @@ bool report_helper::check_gear( player_t& p, sim_t& sim )
         }
       }
       // Check item level
-      if ( !is_whitelisted && item.parsed.data.level > max_ilevel_allowed )
+      if ( !is_whitelisted && item.item_level() > max_ilevel_allowed )
         sim.error( "Player {} has {} of ilevel {}, maximum allowed ilevel for {} is {}.\n", p.name(),
-                   util::slot_type_string( slot ), item.parsed.data.level, tier_name, max_ilevel_allowed );
+                   util::slot_type_string( slot ), item.item_level(), tier_name, max_ilevel_allowed );
     }
 
-    size_t num_gems = 0;
+    // Update equipped gems count
+    // TODO: check gem count per item?
     for ( size_t jj = 0; jj < item.parsed.gem_id.size(); ++jj )
     {
-      if ( item.parsed.data.stat_alloc[ 0 ] == 7889 && item.parsed.gem_id[ jj ] > 0 && num_gems < 1 )
-      {
-        num_gems++;
-        continue;  // 7889 seems to be the stat value for an item that comes with a socket by default,
-                   // so we will allow 1 gem there.
-      }
       if ( item.parsed.gem_id[ jj ] > 0 )
       {
-        sim.errorf(
-            "Player %s has gems equipped in slot %s, there are no gems allowed in default profiles even if they have a "
-            "slot by default, this is to ensure that all default profiles within %s are as equal as possible.\n",
-            p.name(), util::slot_type_string( slot ), tier_name.c_str() );
-        break;
+        equipped_gems++;
       }
     }
 
+    // Check if an unique equipped item is equipped multiple times
     if ( slot == SLOT_FINGER_1 || slot == SLOT_FINGER_2 || slot == SLOT_TRINKET_1 || slot == SLOT_TRINKET_2 )
     {
       for ( auto& slot2 : SLOT_DUPLICATES )
@@ -548,6 +485,25 @@ bool report_helper::check_gear( player_t& p, sim_t& sim )
     if ( !item.option_stats_str.empty() )
       sim.errorf( "Player %s has %s with stats=, it is not allowed.\n", p.name(), util::slot_type_string( slot ) );
 
+    // Check allowed enchant slots in Shadowlands: chest/back/fingers/weapons
+    // And feet/hands/wrists depending on main stat
+    // Warns about invalid slots and kindly notices if an item is missing an enchant
+    if ( slot == SLOT_CHEST || slot == SLOT_FINGER_1 || slot == SLOT_FINGER_2 || slot == SLOT_MAIN_HAND ||
+         // Make sure offhand enchants are only on regular weapons, not shields or off-hand stat sticks
+         ( slot == SLOT_OFF_HAND && item.weapon()->type != weapon_e::WEAPON_NONE ) ||
+         ( slot == SLOT_WRISTS && p.convert_hybrid_stat( STAT_STR_AGI_INT ) == STAT_INTELLECT ) ||
+         ( slot == SLOT_HANDS && p.convert_hybrid_stat( STAT_STR_AGI_INT ) == STAT_STRENGTH ) ||
+         ( slot == SLOT_FEET && p.convert_hybrid_stat( STAT_STR_AGI_INT ) == STAT_AGILITY ) )
+    {
+      if ( item.option_enchant_str.empty() )
+        sim.errorf( "Player %s is missing an enchantment on %s, please add one.\n", p.name(),
+                    util::slot_type_string( slot ) );
+    }
+    // Don't enforce stamina + tertiary cloak enchants
+    else if ( !item.option_enchant_str.empty() && slot != SLOT_BACK )
+      sim.errorf( "Player %s has an invalid enchantment equipped on %s, please remove it. \n", p.name(),
+                  util::slot_type_string( slot ) );
+
     // Check if the item is using enchant_id=
     if ( !item.option_enchant_id_str.empty() )
       sim.errorf( "Player %s has %s with enchant_id=, use enchant= instead.\n", p.name(),
@@ -556,6 +512,30 @@ bool report_helper::check_gear( player_t& p, sim_t& sim )
     // Check if the item is using gems=
     if ( !item.option_gems_str.empty() )
       sim.errorf( "Player %s has %s with gems=, use gem_id= instead.\n", p.name(), util::slot_type_string( slot ) );
+  }
+
+  // Ensures that the player [have enough / doesn't have too many] gems equipped
+  if ( equipped_gems != max_gems )
+  {
+    sim.error( "Player {} has {} gems equipped, gems count for {} should be {}.\n",
+                p.name(), equipped_gems, tier_name.c_str(), max_gems );
+  }
+
+  // Ensures that the player doesn't have too many legendary items equipped
+  if ( equipped_legendaries != max_legendary_items )
+  {
+    sim.error( "Player {} has {} legendary items equipped, legendary item count for {} is {}, at item level {}.\n",
+               p.name(), equipped_legendaries, tier_name, max_legendary_items, legendary_ilevel );
+  }
+
+  // Check that conduit ranks don't exceed the limit
+  if ( p.covenant -> enabled() )
+  {
+    p.covenant -> check_conduits( tier_name, max_conduit_rank );
+  }
+  else
+  {
+    sim.error( "Player {} doesn't have a covenant selected!\n", p.name() );
   }
 
   return true;

@@ -3,9 +3,10 @@
 // Send questions to natehieter@gmail.com
 // ==========================================================================
 
+#include "sc_priest.hpp"
+
 #include "simulationcraft.hpp"
 
-#include "sc_priest.hpp"
 
 namespace priestspace
 {
@@ -41,11 +42,8 @@ struct apotheosis_t final : public priest_spell_t
 
 struct holy_fire_t final : public holy_fire_base_t
 {
-  double sacred_flame_value;
-
   holy_fire_t( priest_t& player, util::string_view options_str )
-    : holy_fire_base_t( "holy_fire", player, player.find_class_spell( "Holy Fire" ) ),
-      sacred_flame_value( priest().azerite.sacred_flame.value( 1 ) )
+    : holy_fire_base_t( "holy_fire", player, player.find_class_spell( "Holy Fire" ) )
   {
     parse_options( options_str );
 
@@ -54,15 +52,6 @@ struct holy_fire_t final : public holy_fire_base_t
     {
       dot_max_stack += as<int>( rank2->effectN( 2 ).base_value() );
     }
-  }
-  double bonus_da( const action_state_t* state ) const override
-  {
-    double d = priest_spell_t::bonus_da( state );
-    if ( priest().azerite.sacred_flame.enabled() )
-    {
-      d += sacred_flame_value;
-    }
-    return d;
   }
 };
 
@@ -92,6 +81,7 @@ struct holy_word_serenity_t final : public priest_heal_t
 };
 
 // TODO Fix targeting to start from the priest and not the target
+// TODO Implement 3+ targets hit extra spawn of Holy Nova
 struct holy_nova_t final : public priest_spell_t
 {
   const spell_data_t* holy_fire_rank2;
@@ -217,28 +207,8 @@ void priest_t::init_spells_holy()
   specs.holy_words         = find_specialization_spell( "Holy Words" );
   specs.holy_word_serenity = find_specialization_spell( "Holy Word: Serenity" );
 
-  // Azerite
-  azerite.sacred_flame = find_azerite_spell( "Sacred Flame" );
-
   // Spec Core
   specs.holy_priest = find_specialization_spell( "Holy Priest" );
-
-  // Range Based on Talents
-  if ( base.distance != 5 && specialization() == PRIEST_HOLY )
-  {
-    if ( talents.divine_star->ok() )
-    {
-      base.distance = 24.0;
-    }
-    else if ( talents.halo->ok() )
-    {
-      base.distance = 27.0;
-    }
-    else
-    {
-      base.distance = 27.0;
-    }
-  }
 }
 
 action_t* priest_t::create_action_holy( util::string_view name, util::string_view options_str )

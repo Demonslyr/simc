@@ -412,6 +412,7 @@ struct melee_t : public enemy_action_t<melee_attack_t>
     base_dd_min       = 1040;
     base_execute_time = timespan_t::from_seconds( 1.5 );
     may_crit = background = repeating = true;
+    may_dodge = may_parry = may_block = true;
     special                           = false;
 
     parse_options( options_str );
@@ -943,7 +944,7 @@ struct add_t : public pet_t
     if ( duration > timespan_t::zero() )
     {
       if ( duration == expiration->remains() )
-        return duration * ( percent * ( 1.0 / 100 ) );
+        return duration * ( 100.0 - percent ) * 0.01;
 
       const double health_pct = health_percentage();
       const double scale      = ( health_pct - percent ) / ( 100 - health_pct );
@@ -1096,37 +1097,32 @@ struct tank_dummy_enemy_t : public enemy_t
       // results but the one that is correct will generally be the one that has the ArmorConstMod value being greater
       // than 1.000 9.0 values here
 
-      /* Level 50 Base/open world: 860.000 (Level 50 Armor mitigation constants (K-values))
-        Level 50 M0/M+: 1020.82 (ExpectedStatModID: 171; ArmorConstMod: 1.187)
-        Ny'alotha LFR: 984.7 (ExpectedStatModID: 143; ArmorConstMod: 1.145)
-        Ny'alotha Normal: 1020.82 (ExpectedStatModID: 151; ArmorConstMod: 1.187)
-        Ny'alotha Heroic: 1106.82 (ExpectedStatModID: 152; ArmorConstMod: 1.287)
-        Ny'alotha Mythic: 1205.72‬ (ExpectedStatModID: 158; ArmorConstMod: 1.402)
+      /* 
         Level 60 Base/open world: 2500.000 (Level 60 Armor mitigation constants (K-values))
-        Level 60 M0/M+: 2455.0 (ExpectedStatModID: 176; ArmorConstMod: 0.982) *Needs to be updated closer to release
+        Level 60 M0/M+: 2455.0 (ExpectedStatModID: 176; ArmorConstMod: 0.982)
         Castle Nathria LFR: 2500.0 (ExpectedStatModID: 181; ArmorConstMod: 1.000)
         Castle Nathria Normal: 2662.5 (ExpectedStatModID: 177; ArmorConstMod: 1.065)
         Castle Nathria Heroic: 2845.0 (ExpectedStatModID: 178; ArmorConstMod: 1.138)
         Castle Nathria Mythic: 3050.0‬ (ExpectedStatModID: 179; ArmorConstMod: 1.220)
-        */
+      */
       double k_value = dbc->armor_mitigation_constant( sim->max_player_level );
 
       switch ( tank_dummy_enum )
       {
         case tank_dummy_e::DUNGEON:
-          base.armor_coeff = k_value * ( sim->max_player_level == 60 ? 0.982 : 1.187 );  // M0/M+
+          base.armor_coeff = k_value * 0.982;  // M0/M+
           sim->print_debug( "{} Dungeon base armor coefficient set to {}.", *this, base.armor_coeff );
           break;
         case tank_dummy_e::RAID:
-          base.armor_coeff = k_value * ( sim->max_player_level == 60 ? 1.065 : 1.187 );  // Normal Raid
+          base.armor_coeff = k_value * 1.065;  // Normal Raid
           sim->print_debug( "{} Normal Raid base armor coefficient set to {}.", *this, base.armor_coeff );
           break;
         case tank_dummy_e::HEROIC:
-          base.armor_coeff = k_value * ( sim->max_player_level == 60 ? 1.138 : 1.287 );  // Heroic Raid
+          base.armor_coeff = k_value * 1.138;  // Heroic Raid
           sim->print_debug( "{} Heroic Raid base armor coefficient set to {}.", *this, base.armor_coeff );
           break;
         case tank_dummy_e::MYTHIC:
-          base.armor_coeff = k_value * ( sim->max_player_level == 60 ? 1.220 : 1.402 );  // Mythic Raid
+          base.armor_coeff = k_value * 1.220;  // Mythic Raid
           sim->print_debug( "{} Mythic Raid base armor coefficient set to {}.", *this, base.armor_coeff );
           break;
         default:
@@ -1322,17 +1318,24 @@ std::string enemy_t::generate_tank_action_list( tank_dummy_e tank_dummy )
 {
   std::string als                 = "";
   constexpr size_t numTankDummies = static_cast<size_t>( tank_dummy_e::MAX );
-  //                               NONE, WEAK, DUNGEON, RAID,  HEROIC, MYTHIC
-  int aa_damage[ numTankDummies ]           = { 0, 10000, 20000, 25000, 40000, 50000 };     // Base auto attack damage
-  int dummy_strike_damage[ numTankDummies ] = { 0, 250000, 50000, 62500, 100000, 142500 };  // Base melee nuke damage
-  int background_spell_damage[ numTankDummies ] = { 0, 400, 800, 10000, 1600, 2000 };  // Base background dot damage
+  //                               NONE, WEAK,           DUNGEON,  RAID,   HEROIC, MYTHIC
+  //                               NONE, Normal Dungeon, Mythic 0, Normal, Heroic, Mythic
+  // Level 60 Values
+  // Defaulted to 20-man damage
+  // Damage is normally increased from 10-man to 30-man by an average of 10% for every 5 players added.
+  // 10-man -> 20-man = 20% increase; 20-man -> 30-man = 20% increase
+  // Raid values using Sludgefist as a baseline
+  int aa_damage[ numTankDummies ]               = { 0, 6415, 11378, 29703, 40678, 66192 };     // Base auto attack damage
+  int dummy_strike_damage[ numTankDummies ]     = { 0, 19245, 34134, 89109, 122034, 198576 };  // Base melee nuke damage (currently set to 3x auto damage)
+  int background_spell_damage[ numTankDummies ] = { 0, 257, 455, 1188, 1627, 2648 };  // Base background dot damage (currently set to 0.04x auto damage)
 
   size_t tank_dummy_index = static_cast<size_t>( tank_dummy );
-  als += "/auto_attack,damage=" + util::to_string( aa_damage[ tank_dummy_index ] ) + ",attack_speed=1.5,aoe_tanks=1";
+  als += "/auto_attack,damage=" + util::to_string( aa_damage[ tank_dummy_index ] ) + 
+         ",range=" + util::to_string( floor( aa_damage[ tank_dummy_index ] * 0.02 ) ) + ",attack_speed=1.5,aoe_tanks=1";
   als += "/melee_nuke,damage=" + util::to_string( dummy_strike_damage[ tank_dummy_index ] ) +
-         ",attack_speed=2,cooldown=25,aoe_tanks=1";
+         ",range=" + util::to_string( floor( dummy_strike_damage[ tank_dummy_index ] * 0.02 ) ) + ",attack_speed=2,cooldown=25,aoe_tanks=1";
   als += "/spell_dot,damage=" + util::to_string( background_spell_damage[ tank_dummy_index ] ) +
-         ",tick_time=2,cooldown=60,aoe_tanks=1,dot_duration=60";
+         ",range=" + util::to_string( floor( background_spell_damage[ tank_dummy_index ] * 0.1 ) ) + ",tick_time=2,cooldown=60,aoe_tanks=1,dot_duration=60";
 
   return als;
 }

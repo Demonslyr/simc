@@ -1,4 +1,4 @@
-# [SimulationCraft](https://www.simulationcraft.org/) [![CI](https://github.com/simulationcraft/simc/workflows/CI/badge.svg)](https://github.com/simulationcraft/simc/actions?query=workflow%3ACI+branch%3Ashadowlands)
+# [SimulationCraft](https://www.simulationcraft.org/) [![CI](https://github.com/simulationcraft/simc/workflows/CI/badge.svg)](https://github.com/simulationcraft/simc/actions?query=workflow%3ACI+branch%3Ashadowlands) [![Build Status](https://travis-ci.org/simulationcraft/simc.svg?branch=shadowlands)](https://travis-ci.org/simulationcraft/simc)
 ## Overview
 
 SimulationCraft is a tool to explore combat mechanics in the popular MMO RPG World of Warcraft (tm).
@@ -85,3 +85,7 @@ cpp-semver (https://github.com/easz/cpp-semver)
 
 Copyright (c) 2018 Cas Perl. All rights reserved.
 MIT License (see LICENSE.MIT for more information).
+
+utf8.h (https://github.com/sheredom/utf8.h)
+
+Unlicense License (see LICENSE.UNLICENSE for more information).

@@ -1,7 +1,7 @@
 demonhunter="T25_Demon_Hunter_Vengeance"
 source=default
 spec=vengeance
-level=120
+level=50
 race=blood_elf
 role=tank
 position=front
@@ -31,47 +31,42 @@ actions.precombat+=/use_item,name=azsharas_font_of_power
 
 # Executed every time the actor is available.
 actions=auto_attack
+actions+=/variable,name=brand_build,value=talent.agonizing_flames.enabled&talent.burning_alive.enabled&talent.charred_flesh.enabled
+actions+=/disrupt
 actions+=/consume_magic
-actions+=/call_action_list,name=brand,if=talent.charred_flesh.enabled
+actions+=/throw_glaive,if=buff.fel_bombardment.stack=5&(buff.immolation_aura.up|!buff.metamorphosis.up)
+actions+=/call_action_list,name=brand,if=variable.brand_build
 actions+=/call_action_list,name=defensives
 actions+=/call_action_list,name=cooldowns
 actions+=/call_action_list,name=normal
 
 # Fiery Brand Rotation
-actions.brand=sigil_of_flame,if=cooldown.fiery_brand.remains<2
-actions.brand+=/infernal_strike,if=cooldown.fiery_brand.remains=0
-actions.brand+=/fiery_brand
+actions.brand=fiery_brand
 actions.brand+=/immolation_aura,if=dot.fiery_brand.ticking
-actions.brand+=/fel_devastation,if=dot.fiery_brand.ticking
-actions.brand+=/infernal_strike,if=dot.fiery_brand.ticking
-actions.brand+=/sigil_of_flame,if=dot.fiery_brand.ticking
 
 actions.cooldowns=potion
-actions.cooldowns+=/concentrated_flame,if=(!dot.concentrated_flame_burn.ticking&!action.concentrated_flame.in_flight|full_recharge_time<gcd.max)
-actions.cooldowns+=/worldvein_resonance,if=buff.lifeblood.stack<3
-actions.cooldowns+=/memory_of_lucid_dreams
-# Default fallback for usable essences.
-actions.cooldowns+=/heart_essence
-actions.cooldowns+=/use_item,effect_name=cyclotronic_blast,if=buff.memory_of_lucid_dreams.down
-actions.cooldowns+=/use_item,name=ashvanes_razor_coral,if=debuff.razor_coral_debuff.down|debuff.conductive_ink_debuff.up&target.health.pct<31|target.time_to_die<20
 # Default fallback for usable items.
 actions.cooldowns+=/use_items
+actions.cooldowns+=/sinful_brand,if=!dot.sinful_brand.ticking
+actions.cooldowns+=/the_hunt
+actions.cooldowns+=/fodder_to_the_flame
+actions.cooldowns+=/elysian_decree
 
 # Defensives
 actions.defensives=demon_spikes
-actions.defensives+=/metamorphosis
+actions.defensives+=/metamorphosis,if=!buff.metamorphosis.up&(!covenant.venthyr.enabled|!dot.sinful_brand.ticking)|target.time_to_die<15
 actions.defensives+=/fiery_brand
 
 # Normal Rotation
-actions.normal=infernal_strike,if=(!talent.flame_crash.enabled|(dot.sigil_of_flame.remains<3&!action.infernal_strike.sigil_placed))
-actions.normal+=/spirit_bomb,if=((buff.metamorphosis.up&soul_fragments>=3)|soul_fragments>=4)
-actions.normal+=/soul_cleave,if=(!talent.spirit_bomb.enabled&((buff.metamorphosis.up&soul_fragments>=3)|soul_fragments>=4))
-actions.normal+=/soul_cleave,if=talent.spirit_bomb.enabled&soul_fragments=0
-actions.normal+=/immolation_aura,if=pain<=90
-actions.normal+=/felblade,if=pain<=70
-actions.normal+=/fracture,if=soul_fragments<=3
+actions.normal=infernal_strike
+actions.normal+=/bulk_extraction
+actions.normal+=/spirit_bomb,if=((buff.metamorphosis.up&talent.fracture.enabled&soul_fragments>=3)|soul_fragments>=4)
 actions.normal+=/fel_devastation
-actions.normal+=/sigil_of_flame
+actions.normal+=/soul_cleave,if=((talent.spirit_bomb.enabled&soul_fragments=0)|!talent.spirit_bomb.enabled)&((talent.fracture.enabled&fury>=55)|(!talent.fracture.enabled&fury>=70)|cooldown.fel_devastation.remains>target.time_to_die|(buff.metamorphosis.up&((talent.fracture.enabled&fury>=35)|(!talent.fracture.enabled&fury>=50))))
+actions.normal+=/immolation_aura,if=((variable.brand_build&cooldown.fiery_brand.remains>10)|!variable.brand_build)&fury<=90
+actions.normal+=/felblade,if=fury<=60
+actions.normal+=/fracture,if=((talent.spirit_bomb.enabled&soul_fragments<=3)|(!talent.spirit_bomb.enabled&((buff.metamorphosis.up&fury<=55)|(buff.metamorphosis.down&fury<=70))))
+actions.normal+=/sigil_of_flame,if=!(covenant.kyrian.enabled&runeforge.razelikhs_defilement)
 actions.normal+=/shear
 actions.normal+=/throw_glaive
 
@@ -93,13 +88,13 @@ main_hand=bilestained_crawg_tusks,id=159653,bonus_id=4824/1637,enchant=deadly_na
 off_hand=bilestained_crawg_tusks,id=159653,bonus_id=4824/1637,enchant=versatile_navigation
 
 # Gear Summary
-# gear_ilvl=476.75
-# gear_agility=9497
-# gear_stamina=19534
-# gear_crit_rating=1269
-# gear_haste_rating=1407
-# gear_mastery_rating=528
-# gear_versatility_rating=915
+# gear_ilvl=163.06
+# gear_agility=566
+# gear_stamina=1012
+# gear_crit_rating=273
+# gear_haste_rating=252
+# gear_mastery_rating=125
+# gear_versatility_rating=168
 # gear_corruption=95
 # gear_corruption_resistance=50
-# gear_armor=3854
+# gear_armor=356

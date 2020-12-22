@@ -407,8 +407,8 @@ void azerite_state_t::initialize()
 
 azerite_power_t azerite_state_t::get_power( unsigned id )
 {
-  // All azerite disabled
-  if ( m_player -> sim -> azerite_status == azerite_control::DISABLED_ALL )
+  const item_t& hoa = m_player->items[ SLOT_NECK ];
+  if ( !hoa.active() || hoa.parsed.data.id != 158075 || m_player->sim->azerite_status == azerite_control::DISABLED_ALL )
   {
     return {};
   }
@@ -688,7 +688,7 @@ bool azerite_state_t::is_enabled( util::string_view name, bool tokenized ) const
 
 std::unique_ptr<expr_t> azerite_state_t::create_expression( util::span<const util::string_view> expr_str ) const
 {
-  if ( expr_str.size() == 1 )
+  if ( expr_str.size() < 3 )
   {
     return nullptr;
   }
@@ -863,7 +863,7 @@ report::sc_html_stream& azerite_essence_state_t::generate_report( report::sc_htm
   // Heart of Azeroth
   const item_t& hoa = m_player->items[ SLOT_NECK ];
 
-  if ( !hoa.active() || hoa.parsed.data.id != 158075 )
+  if ( !hoa.active() || hoa.parsed.data.id != 158075 || m_player->sim->azerite_status == azerite_control::DISABLED_ALL )
     return root;
 
   root << "<tr class=\"left\">\n"
@@ -958,6 +958,12 @@ azerite_essence_state_t::azerite_essence_state_t( const player_t* player ) : m_p
 // Get an azerite essence object by name
 azerite_essence_t azerite_essence_state_t::get_essence( util::string_view name, bool tokenized ) const
 {
+  const item_t& hoa = m_player->items[ SLOT_NECK ];
+  if ( !hoa.active() || hoa.parsed.data.id != 158075 || m_player->sim->azerite_status == azerite_control::DISABLED_ALL )
+  {
+    return { m_player };
+  }
+
   const auto& essence = azerite_essence_entry_t::find( name, tokenized, m_player->dbc->ptr );
   // Could also be a passive spell, so check if the passives logged for the player match this
   for ( size_t i = 0; essence.id == 0 && i < m_state.size(); ++i )
@@ -992,6 +998,11 @@ azerite_essence_t azerite_essence_state_t::get_essence( util::string_view name, 
 
 azerite_essence_t azerite_essence_state_t::get_essence( unsigned id ) const
 {
+  if ( m_player -> sim -> azerite_status == azerite_control::DISABLED_ALL )
+  {
+    return { m_player };
+  }
+
   const auto& essence = azerite_essence_entry_t::find( id, m_player->dbc->ptr );
   // Could also be a passive spell, so check if the passives for the actor match the id
   for ( size_t i = 0; essence.id == 0 && i < m_state.size(); ++i )
@@ -1901,7 +1912,7 @@ void blood_rite( special_effect_t& effect )
       return;
     }
 
-    target->callbacks_on_demise.emplace_back([buff]( player_t* ) {
+    target->register_on_demise_callback( buff->player, [buff]( player_t* ) {
       if ( buff->up( ) )
       {
         buff->refresh();
@@ -3070,7 +3081,7 @@ void synaptic_spark_capacitor( special_effect_t& effect )
       proc_spell_t::tick( d );
 
       // TODO: The 6th (partial) tick never happens in game.
-      if ( d->get_last_tick_factor() < 1.0 )
+      if ( d->get_tick_factor() < 1.0 )
         return;
 
       damage->set_target( d->target );
@@ -3747,10 +3758,8 @@ void heart_of_darkness( special_effect_t& effect )
             ->add_stat( STAT_MASTERY_RATING, value )
             ->add_stat( STAT_VERSATILITY_RATING, value );
     effect.player->register_combat_begin( [heart_of_darkness]( player_t* ) {
-      if ( heart_of_darkness->player->composite_total_corruption() >= 25 )  // This number is not found in spell data
-      {
-        heart_of_darkness->trigger();
-      }
+      // This was turned into passive for pre-patch without a Corruption requirement
+      heart_of_darkness->trigger();
     } );
   }
 }
@@ -5464,7 +5473,7 @@ void aegis_of_the_deep( special_effect_t& effect )
 
   //Spelldata shows a buff trigger every 1s, but in-game observation show an immediate change
   //Add a callback on arise and demise to each enemy in the simulation
-  range::for_each( effect.player -> sim -> actor_list, [ effect, aegis_buff ]( player_t* target )
+  range::for_each( effect.player -> sim -> actor_list, [ p = effect.player, aegis_buff ]( player_t* target )
   {
     // Don't do anything on players
     if ( !target -> is_enemy() )
@@ -5472,18 +5481,18 @@ void aegis_of_the_deep( special_effect_t& effect )
       return;
     }
 
-    target -> callbacks_on_arise.emplace_back([ effect, aegis_buff ] ()
+    target -> register_on_arise_callback( p, [ p, aegis_buff ] ()
     {
       if ( aegis_buff )
       {
-        effect.player -> sim -> print_debug( "An enemy arises! Stand your Ground on player {} is increased by one stack",
-                                             effect.player -> name_str );
+        p -> sim -> print_debug( "An enemy arises! Stand your Ground on player {} is increased by one stack",
+                                 p -> name_str );
         aegis_buff -> trigger();
       }
     } );
 
 
-    target -> callbacks_on_demise.emplace_back([ effect, aegis_buff ] ( player_t* target )
+    target -> register_on_demise_callback( p, [ p, aegis_buff ] ( player_t* target )
     {
       // Don't do anything if the sim is ending
       if ( target -> sim -> event_mgr.canceled )
@@ -5494,7 +5503,7 @@ void aegis_of_the_deep( special_effect_t& effect )
       if ( aegis_buff )
       {
         target -> sim -> print_debug( "Enemy {} demises! Stand your Ground on player {} is reduced by one stack",
-                                      target -> name_str, effect.player -> name_str );
+                                      target -> name_str, p -> name_str );
         aegis_buff -> decrement();
       }
     } );
@@ -5550,7 +5559,7 @@ void register_essence_corruption_resistance( special_effect_t& effect )
   {
     buff = make_buff<resolute_courage_t>( effect.player );
     // this needs to happen on arise which is before snapshot stats
-    effect.player->callbacks_on_arise.emplace_back( [ buff ] {
+    effect.player->register_on_arise_callback( effect.player, [ buff ] {
       buff -> trigger();
     });
   }
@@ -5666,9 +5675,10 @@ struct reaping_flames_t : public azerite_essence_major_t
         if ( !target->is_enemy() )
           return;
 
-        target->callbacks_on_demise.emplace_back( [ this ] ( player_t* enemy )
+        target->register_on_demise_callback( player, [ this ] ( player_t* enemy )
         {
-          if ( player->get_target_data( enemy )->debuff.reaping_flames_tracker->check() )
+          auto td = player->find_target_data( enemy );
+          if ( td && td->debuff.reaping_flames_tracker->check() )
           {
             cooldown->adjust( timespan_t::from_seconds( cd_reset ) - cooldown->duration );
             damage_buff->trigger();
@@ -5736,14 +5746,14 @@ void spark_of_inspiration( special_effect_t& effect )
     {
       buff->trigger();
 
-      if ( !major || !major->essence.enabled() )
+      if ( !major || !major->essence.enabled() || !major->essence.is_major() )
       {
         major = nullptr;
 
         for ( action_t* a : listener->action_list )
         {
           azerite_essence_major_t* candidate = dynamic_cast<azerite_essence_major_t*>( a );
-          if ( candidate && candidate->essence.enabled() )
+          if ( candidate && candidate->essence.enabled() && candidate->essence.is_major() )
           {
             major = candidate;
             break;
@@ -6012,7 +6022,7 @@ double vision_of_perfection_cdr( const azerite_essence_t& essence )
   if ( essence.enabled() )
   {
     // Formula from tooltip
-    double cdr = ( essence.spell( 1u, essence_type::MINOR )->effectN( 1 ).average( essence.item() ) + 2896 ) / -100.0;
+    double cdr = ( essence.spell( 1u, essence_type::MINOR )->effectN( 1 ).average( essence.item() ) + 3320 ) / -100.0;
     // Clamped to 10 .. 25
     cdr = fmax( 10.0, fmin( 25.0, cdr ) );
     // return the negative percent

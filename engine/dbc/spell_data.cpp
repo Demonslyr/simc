@@ -156,17 +156,30 @@ double spelleffect_data_t::average( const player_t* p, unsigned level ) const
 {
   assert( level <= MAX_SCALING_LEVEL );
 
-  double m_scale = 0;
+  if ( level == 0 )
+    level = p->level();
 
-  if ( _m_coeff != 0 && _spell -> scaling_class() != 0 )
+  auto scale = _spell->scaling_class();
+
+  if ( scale == PLAYER_NONE && _spell->max_scaling_level() > 0 )
+    scale = PLAYER_SPECIAL_SCALE8;
+
+  if ( _m_coeff != 0 && scale != PLAYER_NONE )
   {
-    unsigned scaling_level = level ? level : p -> level();
-    if ( _spell -> max_scaling_level() > 0 )
-      scaling_level = std::min( scaling_level, _spell -> max_scaling_level() );
-    m_scale = p -> dbc->spell_scaling( _spell -> scaling_class(), scaling_level );
-  }
+    if ( _spell->max_scaling_level() > 0 )
+      level = std::min( level, _spell->max_scaling_level() );
 
-  return scaled_average( m_scale, level );
+    return _m_coeff * p->dbc->spell_scaling( scale, level );
+  }
+  else if ( _real_ppl != 0 )
+  {
+    if ( _spell->max_level() > 0 )
+      return _base_value + ( std::min( level, _spell->max_level() ) - _spell->level() ) * _real_ppl;
+    else
+      return _base_value + ( level - _spell->level() ) * _real_ppl;
+  }
+  else
+    return _base_value;
 }
 
 double spelleffect_data_t::average( const item_t* item ) const
@@ -192,21 +205,6 @@ double spelleffect_data_t::average( const item_t* item ) const
   }
 
   return _m_coeff * budget;
-}
-
-double spelleffect_data_t::scaled_average( double budget, unsigned level ) const
-{
-  if ( _m_coeff != 0 && _spell -> scaling_class() != 0 )
-    return _m_coeff * budget;
-  else if ( _real_ppl != 0 )
-  {
-    if ( _spell -> max_level() > 0 )
-      return _base_value + ( std::min( level, _spell -> max_level() ) - _spell -> level() ) * _real_ppl;
-    else
-      return _base_value + ( level - _spell -> level() ) * _real_ppl;
-  }
-  else
-    return _base_value;
 }
 
 double spelleffect_data_t::scaled_delta( double budget ) const
@@ -269,6 +267,8 @@ double spelleffect_data_t::default_multiplier() const
   {
     case E_APPLY_AURA:
     case E_APPLY_AREA_AURA_OWNER:
+    case E_APPLY_AURA_PET:
+    case E_APPLY_AURA_PLAYER_AND_PET:
       switch ( subtype() )
       {
         case A_PERIODIC_TRIGGER_SPELL:
@@ -325,6 +325,30 @@ double spelleffect_data_t::default_multiplier() const
   }
 
   return 1.0; // base_value
+}
+
+unsigned spelleffect_data_t::affected_schools() const
+{
+  switch ( subtype() )
+  {
+    case A_MOD_DAMAGE_DONE:
+    case A_MOD_DAMAGE_TAKEN:
+    case A_SCHOOL_IMMUNITY:
+    case A_SCHOOL_ABSORB:
+    case A_MOD_POWER_COST_SCHOOL_PCT:
+    case A_MOD_POWER_COST_SCHOOL:
+    case A_REFLECT_SPELLS_SCHOOL:
+    case A_MOD_DAMAGE_PERCENT_DONE:
+    case A_MOD_DAMAGE_PERCENT_TAKEN:
+    case A_MOD_DAMAGE_TO_CASTER:
+    case A_MOD_DAMAGE_FROM_CASTER:
+    case A_MOD_CRIT_DAMAGE_BONUS:
+      return static_cast<unsigned>( misc_value1() );
+    default:
+      break;
+  }
+
+  return 0u;
 }
 
 const spelleffect_data_t* spelleffect_data_t::find( unsigned id, bool ptr )
@@ -390,22 +414,21 @@ std::string spell_data_t::to_str() const
 }
 
 // check if spell affected by effect through either class flag, label or category
-bool spell_data_t::affected_by_all( const dbc_t& dbc, const spelleffect_data_t& effect ) const
+bool spell_data_t::affected_by_all( const spelleffect_data_t& effect ) const
 {
   return affected_by( effect ) ||
          affected_by_label( effect ) ||
-         affected_by_category( dbc, effect );
+         affected_by_category( effect );
 }
 
-bool spell_data_t::affected_by_category( const dbc_t& dbc, const spelleffect_data_t& effect ) const
+bool spell_data_t::affected_by_category( const spelleffect_data_t& effect ) const
 {
-  return affected_by_category(dbc, effect.misc_value1());
+  return affected_by_category( effect.misc_value1() );
 }
 
-bool spell_data_t::affected_by_category( const dbc_t& dbc, int category ) const
+bool spell_data_t::affected_by_category( int category_ ) const
 {
-  const auto affected_spells = dbc.spells_by_category(category);
-  return range::find(affected_spells, id(), &spell_data_t::id) != affected_spells.end();
+  return category_ > 0 && category() == as<unsigned>( category_ );
 }
 
 bool spell_data_t::affected_by_label( const spelleffect_data_t& effect ) const

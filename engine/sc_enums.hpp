@@ -369,6 +369,13 @@ enum pet_e
   PET_EARTH_ELEMENTAL,
   PET_SHAMAN,
 
+  PET_XUEN,
+  PET_NIUZAO,
+  PET_CHIJI,
+  PET_YULON,
+  PET_FALLEN_MONK,
+  PET_MONK,
+
   PET_ENEMY,
 
   PET_MAX
@@ -526,7 +533,8 @@ enum special_effect_source_e
   SPECIAL_EFFECT_SOURCE_AZERITE,
   SPECIAL_EFFECT_SOURCE_AZERITE_ESSENCE,
   SPECIAL_EFFECT_SOURCE_SOULBIND,
-  SPECIAL_EFFECT_SOURCE_FALLBACK
+  SPECIAL_EFFECT_SOURCE_FALLBACK,
+  SPECIAL_EFFECT_SOURCE_TEMPORARY_ENCHANT
 };
 
 enum special_effect_buff_e
@@ -811,21 +819,12 @@ enum set_bonus_type_e
   SET_BONUS_NONE = -1,
 
   // Actual tier support in SIMC
-  PVP,
-  T17LFR,
-  T18LFR,
-  T19OH,
   T19P_G1,
   T19P_G2,
   T19P_CLOTH,
   T19P_LEATHER,
   T19P_MAIL,
   T19P_PLATE,
-  T17,
-  T18,
-  T19,
-  T20,
-  T21,
   T21P_G1,
   T23_GIFT_OF_THE_LOA,
   T23_KEEPSAKES,
@@ -1086,6 +1085,20 @@ enum cache_e
   CACHE_MAX
 };
 
+enum stat_pct_buff_type
+{
+  STAT_PCT_BUFF_CRIT,
+  STAT_PCT_BUFF_HASTE,
+  STAT_PCT_BUFF_VERSATILITY,
+  STAT_PCT_BUFF_MASTERY,
+  STAT_PCT_BUFF_STRENGTH,
+  STAT_PCT_BUFF_AGILITY,
+  STAT_PCT_BUFF_STAMINA,
+  STAT_PCT_BUFF_INTELLECT,
+  STAT_PCT_BUFF_SPIRIT,
+  STAT_PCT_BUFF_MAX
+};
+
 #define check( x )                                                   \
   static_assert(                                                     \
       static_cast<int>( CACHE_##x ) == static_cast<int>( ATTR_##x ), \
@@ -1148,6 +1161,24 @@ inline cache_e cache_from_stat( stat_e st )
         break;
     }
   return CACHE_NONE;
+}
+
+inline cache_e cache_from_stat_pct_buff( stat_pct_buff_type spb )
+{
+  switch ( spb )
+  {
+    case STAT_PCT_BUFF_CRIT: return CACHE_CRIT_CHANCE;
+    case STAT_PCT_BUFF_HASTE: return CACHE_HASTE;
+    case STAT_PCT_BUFF_VERSATILITY: return CACHE_VERSATILITY;
+    case STAT_PCT_BUFF_MASTERY: return CACHE_MASTERY;
+    case STAT_PCT_BUFF_STRENGTH: return CACHE_STRENGTH;
+    case STAT_PCT_BUFF_AGILITY: return CACHE_AGILITY;
+    case STAT_PCT_BUFF_STAMINA: return CACHE_STAMINA;
+    case STAT_PCT_BUFF_INTELLECT: return CACHE_INTELLECT;
+    case STAT_PCT_BUFF_SPIRIT: return CACHE_SPIRIT;
+    case STAT_PCT_BUFF_MAX: break;
+  }
+  assert( false ); return CACHE_NONE;
 }
 
 // Gear Rating Conversions ==================================================

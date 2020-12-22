@@ -1,17 +1,20 @@
 mage="PR_Mage_Arcane"
 source=default
 spec=arcane
-level=120
-race=troll
+level=60
+race=orc
 role=spell
-position=back
-talents=2032021
+position=ranged_back
+talents=1032021
+covenant=night_fae
+soulbind=niya,grove_invigoration/magis_brand:4
 
 # Default consumables
-potion=focused_resolve
-flask=greater_flask_of_endless_fathoms
-food=mechdowels_big_mech
-augmentation=battle_scarred
+potion=spectral_intellect
+flask=spectral_flask_of_power
+food=feast_of_gluttonous_hedonism
+augmentation=veiled
+temporary_enchant=main_hand:shadowcore_oil
 
 # This default action priority list is automatically created based on your character.
 # It is a attempt to provide you with a action list that is both simple and practicable,
@@ -20,126 +23,255 @@ augmentation=battle_scarred
 # SimulationCraft is always looking for updates and improvements to the default action lists.
 
 # Executed before combat begins. Accepts non-harmful actions only.
-actions.precombat=flask
+actions.precombat=variable,name=prepull_evo,op=reset,default=-1
+actions.precombat+=/variable,name=prepull_evo,op=set,value=1,if=variable.prepull_evo=-1&runeforge.siphon_storm&active_enemies>2
+actions.precombat+=/variable,name=prepull_evo,op=set,value=1,if=variable.prepull_evo=-1&runeforge.siphon_storm&covenant.necrolord&active_enemies>1
+actions.precombat+=/variable,name=prepull_evo,op=set,value=0,if=variable.prepull_evo=-1
+actions.precombat+=/variable,name=have_opened,op=set,value=0
+actions.precombat+=/variable,name=have_opened,op=set,value=1,if=variable.have_opened=0&active_enemies>2
+actions.precombat+=/variable,name=have_opened,op=set,value=1,if=variable.have_opened=0&variable.prepull_evo=1
+actions.precombat+=/variable,name=final_burn,op=set,value=0
+actions.precombat+=/variable,name=rs_max_delay_for_totm,op=reset,default=5
+actions.precombat+=/variable,name=rs_max_delay_for_rop,op=reset,default=5
+actions.precombat+=/variable,name=rs_max_delay_for_ap,op=reset,default=20
+actions.precombat+=/variable,name=ap_max_delay_for_totm,op=reset,default=10
+actions.precombat+=/variable,name=rop_max_delay_for_totm,op=reset,default=20
+actions.precombat+=/variable,name=totm_max_delay_for_ap,op=reset,default=-1
+actions.precombat+=/variable,name=totm_max_delay_for_ap,op=set,value=3,if=variable.totm_max_delay_for_ap=-1&runeforge.disciplinary_command
+actions.precombat+=/variable,name=totm_max_delay_for_ap,op=set,value=15,if=variable.totm_max_delay_for_ap=-1&covenant.night_fae
+actions.precombat+=/variable,name=totm_max_delay_for_ap,op=set,value=15,if=variable.totm_max_delay_for_ap=-1&conduit.arcane_prodigy&active_enemies<3
+actions.precombat+=/variable,name=totm_max_delay_for_ap,op=set,value=5,if=variable.totm_max_delay_for_ap=-1
+actions.precombat+=/variable,name=totm_max_delay_for_rop,op=reset,default=20
+actions.precombat+=/variable,name=barrage_mana_pct,op=reset,default=-1
+actions.precombat+=/variable,name=barrage_mana_pct,op=set,value=(60-(mastery_value*100)),if=variable.barrage_mana_pct=-1&covenant.night_fae
+actions.precombat+=/variable,name=barrage_mana_pct,op=set,value=(80-(mastery_value*100)),if=variable.barrage_mana_pct=-1
+actions.precombat+=/variable,name=ap_minimum_mana_pct,op=reset,default=-1
+actions.precombat+=/variable,name=ap_minimum_mana_pct,op=set,value=50,if=variable.ap_minimum_mana_pct=-1&runeforge.disciplinary_command
+actions.precombat+=/variable,name=ap_minimum_mana_pct,op=set,value=50,if=variable.ap_minimum_mana_pct=-1&runeforge.grisly_icicle
+actions.precombat+=/variable,name=ap_minimum_mana_pct,op=set,value=15,if=variable.ap_minimum_mana_pct=-1
+actions.precombat+=/variable,name=totm_max_charges,op=reset,default=2
+actions.precombat+=/variable,name=aoe_totm_max_charges,op=reset,default=2
+actions.precombat+=/variable,name=inverted_opener,op=reset,default=-1
+actions.precombat+=/variable,name=inverted_opener,op=set,value=1,if=variable.inverted_opener=-1&talent.rune_of_power&(talent.arcane_echo|!covenant.kyrian)&(!covenant.necrolord|active_enemies=1|runeforge.siphon_storm)
+actions.precombat+=/variable,name=inverted_opener,op=set,value=0,if=variable.inverted_opener=-1
+actions.precombat+=/variable,name=ap_on_use,op=set,value=equipped.macabre_sheet_music|equipped.gladiators_badge|equipped.gladiators_medallion|equipped.darkmoon_deck_putrescence|equipped.inscrutable_quantum_device|equipped.soulletting_ruby|equipped.sunblood_amethyst|equipped.wakeners_frond|equipped.flame_of_battle
+actions.precombat+=/variable,name=am_spam,op=reset,default=0
+actions.precombat+=/variable,name=have_opened,op=set,value=1,if=variable.have_opened=0&variable.am_spam=1
+actions.precombat+=/variable,name=evo_pct,op=reset,default=15
+actions.precombat+=/flask
 actions.precombat+=/food
 actions.precombat+=/augmentation
-actions.precombat+=/arcane_intellect
 actions.precombat+=/arcane_familiar
-# conserve_mana is the mana percentage we want to go down to during conserve. It needs to leave enough room to worst case scenario spam AB only during AP.
-actions.precombat+=/variable,name=conserve_mana,op=set,value=60+20*azerite.equipoise.enabled
-actions.precombat+=/variable,name=font_double_on_use,op=set,value=equipped.azsharas_font_of_power&(equipped.manifesto_of_madness|equipped.gladiators_badge|equipped.gladiators_medallion|equipped.ignition_mages_fuse|equipped.tzanes_barkspines|equipped.azurethos_singed_plumage|equipped.ancient_knot_of_wisdom|equipped.shockbiters_fang|equipped.neural_synapse_enhancer|equipped.balefire_branch)
-# This variable determines when Azshara's Font of Power is used before the pull if bfa.font_of_power_precombat_channel is not specified.
-actions.precombat+=/variable,name=font_of_power_precombat_channel,op=set,value=12,if=variable.font_double_on_use&variable.font_of_power_precombat_channel=0
+actions.precombat+=/arcane_intellect
+actions.precombat+=/conjure_mana_gem
 actions.precombat+=/snapshot_stats
-actions.precombat+=/use_item,name=azsharas_font_of_power
 actions.precombat+=/mirror_image
-actions.precombat+=/potion
-actions.precombat+=/arcane_blast
+actions.precombat+=/frostbolt,if=!variable.prepull_evo=1&runeforge.disciplinary_command
+actions.precombat+=/arcane_blast,if=!variable.prepull_evo=1&!runeforge.disciplinary_command
+actions.precombat+=/evocation,if=variable.prepull_evo=1
 
 # Executed every time the actor is available.
-actions=counterspell
-actions+=/call_action_list,name=essences
-actions+=/use_item,name=azsharas_font_of_power,if=buff.rune_of_power.down&buff.arcane_power.down&(cooldown.arcane_power.remains<=4+10*variable.font_double_on_use&cooldown.evocation.remains<=variable.average_burn_length+4+10*variable.font_double_on_use|time_to_die<cooldown.arcane_power.remains)
-# Go to Burn Phase when already burning, or when boss will die soon.
-actions+=/call_action_list,name=burn,if=burn_phase|target.time_to_die<variable.average_burn_length
-# Start Burn Phase when Arcane Power is ready and Evocation will be ready (on average) before the burn phase is over. Also make sure we got 4 Arcane Charges, or can get 4 Arcane Charges with Charged Up.
-actions+=/call_action_list,name=burn,if=(cooldown.arcane_power.remains=0&cooldown.evocation.remains<=variable.average_burn_length&(buff.arcane_charge.stack=buff.arcane_charge.max_stack|(talent.charged_up.enabled&cooldown.charged_up.remains=0&buff.arcane_charge.stack<=1)))
-actions+=/call_action_list,name=conserve,if=!burn_phase
+actions=counterspell,if=target.debuff.casting.react
+actions+=/variable,name=have_opened,op=set,value=1,if=variable.have_opened=0&prev_gcd.1.evocation&!(runeforge.siphon_storm|runeforge.temporal_warp)
+actions+=/variable,name=have_opened,op=set,value=1,if=variable.have_opened=0&buff.arcane_power.down&cooldown.arcane_power.remains&(runeforge.siphon_storm|runeforge.temporal_warp)
+actions+=/variable,name=final_burn,op=set,value=1,if=buff.arcane_charge.stack=buff.arcane_charge.max_stack&!buff.rule_of_threes.up&fight_remains<=((mana%action.arcane_blast.cost)*action.arcane_blast.execute_time)
+actions+=/call_action_list,name=shared_cds
+actions+=/call_action_list,name=aoe,if=active_enemies>2
+actions+=/call_action_list,name=opener,if=variable.have_opened=0
+actions+=/call_action_list,name=am_spam,if=variable.am_spam=1
+actions+=/call_action_list,name=cooldowns
+actions+=/call_action_list,name=rotation,if=variable.final_burn=0
+actions+=/call_action_list,name=final_burn,if=variable.final_burn=1
 actions+=/call_action_list,name=movement
 
-# Increment our burn phase counter. Whenever we enter the `burn` actions without being in a burn phase, it means that we are about to start one.
-actions.burn=variable,name=total_burns,op=add,value=1,if=!burn_phase
-actions.burn+=/start_burn_phase,if=!burn_phase
-# End the burn phase when we just evocated.
-actions.burn+=/stop_burn_phase,if=burn_phase&prev_gcd.1.evocation&target.time_to_die>variable.average_burn_length&burn_phase_duration>0
-# Less than 1 instead of equals to 0, because of pre-cast Arcane Blast
-actions.burn+=/charged_up,if=buff.arcane_charge.stack<=1
-actions.burn+=/mirror_image
-actions.burn+=/nether_tempest,if=(refreshable|!ticking)&buff.arcane_charge.stack=buff.arcane_charge.max_stack&buff.rune_of_power.down&buff.arcane_power.down
-# When running Overpowered, and we got a Rule of Threes proc (AKA we got our 4th Arcane Charge via Charged Up), use it before using RoP+AP, because the mana reduction is otherwise largely wasted since the AB was free anyway.
-actions.burn+=/arcane_blast,if=buff.rule_of_threes.up&talent.overpowered.enabled&active_enemies<3
-actions.burn+=/lights_judgment,if=buff.arcane_power.down
-actions.burn+=/bag_of_tricks,if=buff.arcane_power.down
-actions.burn+=/rune_of_power,if=buff.rune_of_power.down&!buff.arcane_power.up&(mana.pct>=50|cooldown.arcane_power.remains=0)&(buff.arcane_charge.stack=buff.arcane_charge.max_stack)
-actions.burn+=/berserking
-actions.burn+=/arcane_power
-actions.burn+=/use_items,if=buff.arcane_power.up|target.time_to_die<cooldown.arcane_power.remains
-actions.burn+=/blood_fury
-actions.burn+=/fireblood
-actions.burn+=/ancestral_call
-actions.burn+=/presence_of_mind,if=(talent.rune_of_power.enabled&buff.rune_of_power.remains<=buff.presence_of_mind.max_stack*action.arcane_blast.execute_time)|buff.arcane_power.remains<=buff.presence_of_mind.max_stack*action.arcane_blast.execute_time
-actions.burn+=/potion,if=buff.arcane_power.up&((!essence.condensed_lifeforce.major|essence.condensed_lifeforce.rank<2)&(buff.berserking.up|buff.blood_fury.up|!(race.troll|race.orc))|buff.guardian_of_azeroth.up)|target.time_to_die<cooldown.arcane_power.remains
-actions.burn+=/arcane_orb,if=buff.arcane_charge.stack=0|(active_enemies<3|(active_enemies<2&talent.resonance.enabled))
-actions.burn+=/arcane_barrage,if=active_enemies>=3&(buff.arcane_charge.stack=buff.arcane_charge.max_stack)
-actions.burn+=/arcane_explosion,if=active_enemies>=3
-# Ignore Arcane Missiles during Arcane Power, aside from some very specific exceptions, like not having Overpowered talented & running 3x Arcane Pummeling.
-actions.burn+=/arcane_missiles,if=buff.clearcasting.react&active_enemies<3&(talent.amplification.enabled|(!talent.overpowered.enabled&azerite.arcane_pummeling.rank>=2)|buff.arcane_power.down),chain=1
-actions.burn+=/arcane_blast,if=active_enemies<3
-# Now that we're done burning, we can update the average_burn_length with the length of this burn.
-actions.burn+=/variable,name=average_burn_length,op=set,value=(variable.average_burn_length*variable.total_burns-variable.average_burn_length+(burn_phase_duration))%variable.total_burns
-actions.burn+=/evocation,interrupt_if=mana.pct>=85,interrupt_immediate=1
-# For the rare occasion where we go oom before evocation is back up. (Usually because we get very bad rng so the burn is cut very short)
-actions.burn+=/arcane_barrage
+actions.am_spam=cancel_action,if=action.evocation.channeling&mana.pct>=95
+actions.am_spam+=/evocation,if=mana.pct<=variable.evo_pct&(cooldown.touch_of_the_magi.remains<=action.evocation.execute_time|cooldown.arcane_power.remains<=action.evocation.execute_time|(talent.rune_of_power&cooldown.rune_of_power.remains<=action.evocation.execute_time))&buff.rune_of_power.down&buff.arcane_power.down&debuff.touch_of_the_magi.down
+actions.am_spam+=/deathborne,if=cooldown.arcane_power.remains=0&(buff.rune_of_power.down&(cooldown.touch_of_the_magi.remains>variable.ap_max_delay_for_totm|cooldown.touch_of_the_magi.remains=0))
+actions.am_spam+=/mirrors_of_torment,if=cooldown.arcane_power.remains=0&(buff.rune_of_power.down&(cooldown.touch_of_the_magi.remains>variable.ap_max_delay_for_totm|cooldown.touch_of_the_magi.remains=0))
+actions.am_spam+=/radiant_spark
+actions.am_spam+=/shifting_power,if=buff.arcane_power.down&buff.rune_of_power.down&debuff.touch_of_the_magi.down
+actions.am_spam+=/rune_of_power,if=buff.rune_of_power.down&cooldown.arcane_power.remains
+actions.am_spam+=/touch_of_the_magi,if=(cooldown.arcane_power.remains=0&buff.rune_of_power.down)|prev_gcd.1.rune_of_power
+actions.am_spam+=/touch_of_the_magi,if=cooldown.arcane_power.remains<50&buff.rune_of_power.down&essence.vision_of_perfection.enabled
+actions.am_spam+=/arcane_power,if=buff.rune_of_power.down&cooldown.touch_of_the_magi.remains>variable.ap_max_delay_for_totm
+actions.am_spam+=/arcane_barrage,if=buff.arcane_power.up&buff.arcane_power.remains<=action.arcane_missiles.execute_time&buff.arcane_charge.stack=buff.arcane_charge.max_stack
+actions.am_spam+=/arcane_orb,if=buff.arcane_charge.stack<buff.arcane_charge.max_stack&buff.rune_of_power.down&buff.arcane_power.down&debuff.touch_of_the_magi.down
+actions.am_spam+=/arcane_barrage,if=buff.rune_of_power.down&buff.arcane_power.down&debuff.touch_of_the_magi.down&buff.arcane_charge.stack=buff.arcane_charge.max_stack
+actions.am_spam+=/arcane_missiles,if=buff.clearcasting.react,chain=1,early_chain_if=buff.clearcasting_channel.down&(buff.arcane_power.up|buff.rune_of_power.up|cooldown.evocation.ready)
+actions.am_spam+=/arcane_missiles,if=!azerite.arcane_pummeling.enabled|buff.clearcasting_channel.down,chain=1,early_chain_if=buff.clearcasting_channel.down&(buff.arcane_power.up|buff.rune_of_power.up|cooldown.evocation.ready)
+actions.am_spam+=/evocation,if=buff.rune_of_power.down&buff.arcane_power.down&debuff.touch_of_the_magi.down
+actions.am_spam+=/arcane_orb,if=buff.arcane_charge.stack<buff.arcane_charge.max_stack
+actions.am_spam+=/arcane_barrage
+actions.am_spam+=/arcane_blast
 
-actions.conserve=mirror_image
-actions.conserve+=/charged_up,if=buff.arcane_charge.stack=0
-actions.conserve+=/nether_tempest,if=(refreshable|!ticking)&buff.arcane_charge.stack=buff.arcane_charge.max_stack&buff.rune_of_power.down&buff.arcane_power.down
-actions.conserve+=/arcane_orb,if=buff.arcane_charge.stack<=2&(cooldown.arcane_power.remains>10|active_enemies<=2)
-# Arcane Blast shifts up in priority when running rule of threes.
-actions.conserve+=/arcane_blast,if=buff.rule_of_threes.up&buff.arcane_charge.stack>3
-actions.conserve+=/use_item,name=tidestorm_codex,if=buff.rune_of_power.down&!buff.arcane_power.react&cooldown.arcane_power.remains>20
-actions.conserve+=/use_item,effect_name=cyclotronic_blast,if=buff.rune_of_power.down&!buff.arcane_power.react&cooldown.arcane_power.remains>20
-actions.conserve+=/rune_of_power,if=buff.rune_of_power.down&buff.arcane_charge.stack=buff.arcane_charge.max_stack&(full_recharge_time<=execute_time|full_recharge_time<=cooldown.arcane_power.remains|target.time_to_die<=cooldown.arcane_power.remains)
-actions.conserve+=/arcane_missiles,if=mana.pct<=95&buff.clearcasting.react&active_enemies<3,chain=1
-# During conserve, we still just want to continue not dropping charges as long as possible.So keep 'burning' as long as possible (aka conserve_mana threshhold) and then swap to a 4x AB->Abarr conserve rotation. If we do not have 4 AC, we can dip slightly lower to get a 4th AC. We also sustain at a higher mana percentage when we plan to use a Rune of Power during conserve phase, so we can burn during the Rune of Power.
-actions.conserve+=/arcane_barrage,if=((buff.arcane_charge.stack=buff.arcane_charge.max_stack)&((mana.pct<=variable.conserve_mana)|(talent.rune_of_power.enabled&cooldown.arcane_power.remains>cooldown.rune_of_power.full_recharge_time&mana.pct<=variable.conserve_mana+25))|(talent.arcane_orb.enabled&cooldown.arcane_orb.remains<=gcd&cooldown.arcane_power.remains>10))|mana.pct<=(variable.conserve_mana-10)
-# Supernova is barely worth casting, which is why it is so far down, only just above AB. 
-actions.conserve+=/supernova,if=mana.pct<=95
-# Keep 'burning' in aoe situations until conserve_mana pct. After that only cast AE with 3 Arcane charges, since it's almost equal mana cost to a 3 stack AB anyway. At that point AoE rotation will be AB x3->AE->Abarr
-actions.conserve+=/arcane_explosion,if=active_enemies>=3&(mana.pct>=variable.conserve_mana|buff.arcane_charge.stack=3)
-actions.conserve+=/arcane_blast
-actions.conserve+=/arcane_barrage
+actions.aoe=frostbolt,if=runeforge.disciplinary_command&cooldown.buff_disciplinary_command.ready&buff.disciplinary_command_frost.down&(buff.arcane_power.down&buff.rune_of_power.down&debuff.touch_of_the_magi.down)&cooldown.touch_of_the_magi.remains=0&(buff.arcane_charge.stack<=variable.aoe_totm_max_charges&((talent.rune_of_power&cooldown.rune_of_power.remains<=gcd&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)|(!talent.rune_of_power&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)|cooldown.arcane_power.remains<=gcd))
+actions.aoe+=/fire_blast,if=(runeforge.disciplinary_command&cooldown.buff_disciplinary_command.ready&buff.disciplinary_command_fire.down&prev_gcd.1.frostbolt)|(runeforge.disciplinary_command&time=0)
+actions.aoe+=/frost_nova,if=runeforge.grisly_icicle&cooldown.arcane_power.remains>30&cooldown.touch_of_the_magi.remains=0&(buff.arcane_charge.stack<=variable.aoe_totm_max_charges&((talent.rune_of_power&cooldown.rune_of_power.remains<=gcd&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)|(!talent.rune_of_power&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)|cooldown.arcane_power.remains<=gcd))
+actions.aoe+=/frost_nova,if=runeforge.grisly_icicle&cooldown.arcane_power.remains=0&(((cooldown.touch_of_the_magi.remains>variable.ap_max_delay_for_totm&buff.arcane_charge.stack=buff.arcane_charge.max_stack)|(cooldown.touch_of_the_magi.remains=0&buff.arcane_charge.stack<=variable.aoe_totm_max_charges))&buff.rune_of_power.down)
+actions.aoe+=/touch_of_the_magi,if=runeforge.siphon_storm&prev_gcd.1.evocation
+actions.aoe+=/arcane_power,if=runeforge.siphon_storm&(prev_gcd.1.evocation|prev_gcd.1.touch_of_the_magi)
+actions.aoe+=/evocation,if=time>30&runeforge.siphon_storm&buff.arcane_charge.stack<=variable.aoe_totm_max_charges&cooldown.touch_of_the_magi.remains=0&cooldown.arcane_power.remains<=gcd
+actions.aoe+=/evocation,if=time>30&runeforge.siphon_storm&cooldown.arcane_power.remains=0&(((cooldown.touch_of_the_magi.remains>variable.ap_max_delay_for_totm&buff.arcane_charge.stack=buff.arcane_charge.max_stack)|(cooldown.touch_of_the_magi.remains=0&buff.arcane_charge.stack<=variable.aoe_totm_max_charges))&buff.rune_of_power.down),interrupt_if=buff.siphon_storm.stack=buff.siphon_storm.max_stack,interrupt_immediate=1
+actions.aoe+=/mirrors_of_torment,if=(cooldown.arcane_power.remains>45|cooldown.arcane_power.remains<=3)&cooldown.touch_of_the_magi.remains=0&(buff.arcane_charge.stack<=variable.aoe_totm_max_charges&((talent.rune_of_power&cooldown.rune_of_power.remains<=gcd&cooldown.arcane_power.remains>5)|(!talent.rune_of_power&cooldown.arcane_power.remains>5)|cooldown.arcane_power.remains<=gcd))
+actions.aoe+=/radiant_spark,if=cooldown.touch_of_the_magi.remains<execute_time&(buff.arcane_charge.stack<=variable.aoe_totm_max_charges&((talent.rune_of_power&cooldown.rune_of_power.remains<=gcd&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)|(!talent.rune_of_power&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)|cooldown.arcane_power.remains<=gcd))
+actions.aoe+=/radiant_spark,if=cooldown.arcane_power.remains<execute_time&(((cooldown.touch_of_the_magi.remains>variable.ap_max_delay_for_totm&buff.arcane_charge.stack=buff.arcane_charge.max_stack)|(cooldown.touch_of_the_magi.remains=0&buff.arcane_charge.stack<=variable.aoe_totm_max_charges))&buff.rune_of_power.down)
+actions.aoe+=/deathborne,if=cooldown.arcane_power.remains=0&(((cooldown.touch_of_the_magi.remains>variable.ap_max_delay_for_totm&buff.arcane_charge.stack=buff.arcane_charge.max_stack)|(cooldown.touch_of_the_magi.remains=0&buff.arcane_charge.stack<=variable.aoe_totm_max_charges))&buff.rune_of_power.down)
+actions.aoe+=/touch_of_the_magi,if=buff.arcane_charge.stack<=variable.aoe_totm_max_charges&((talent.rune_of_power&cooldown.rune_of_power.remains<=gcd&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)|(!talent.rune_of_power&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)|cooldown.arcane_power.remains<=gcd)
+actions.aoe+=/arcane_power,if=((cooldown.touch_of_the_magi.remains>variable.ap_max_delay_for_totm&buff.arcane_charge.stack=buff.arcane_charge.max_stack)|(cooldown.touch_of_the_magi.remains=0&buff.arcane_charge.stack<=variable.aoe_totm_max_charges))&buff.rune_of_power.down
+actions.aoe+=/rune_of_power,if=buff.rune_of_power.down&((cooldown.touch_of_the_magi.remains>20&buff.arcane_charge.stack=buff.arcane_charge.max_stack)|(cooldown.touch_of_the_magi.remains=0&buff.arcane_charge.stack<=variable.aoe_totm_max_charges))&(cooldown.arcane_power.remains>12|debuff.touch_of_the_magi.up)
+actions.aoe+=/shifting_power,if=cooldown.arcane_orb.remains>5|!talent.arcane_orb
+actions.aoe+=/presence_of_mind,if=buff.deathborne.up&debuff.touch_of_the_magi.up&debuff.touch_of_the_magi.remains<=buff.presence_of_mind.max_stack*action.arcane_blast.execute_time
+actions.aoe+=/arcane_blast,if=buff.deathborne.up&((talent.resonance&active_enemies<4)|active_enemies<5)&(!runeforge.arcane_bombardment|target.health.pct>35)
+actions.aoe+=/supernova
+actions.aoe+=/arcane_barrage,if=buff.arcane_charge.stack=buff.arcane_charge.max_stack
+actions.aoe+=/arcane_orb,if=buff.arcane_charge.stack=0
+actions.aoe+=/nether_tempest,if=(refreshable|!ticking)&buff.arcane_charge.stack=buff.arcane_charge.max_stack
+actions.aoe+=/arcane_missiles,if=buff.clearcasting.react&runeforge.arcane_infinity&((talent.amplification&active_enemies<8)|active_enemies<5)
+actions.aoe+=/arcane_missiles,if=buff.clearcasting.react&talent.arcane_echo&debuff.touch_of_the_magi.up&(talent.amplification|active_enemies<9)
+actions.aoe+=/arcane_missiles,if=buff.clearcasting.react&talent.amplification&active_enemies<4
+actions.aoe+=/arcane_explosion,if=buff.arcane_charge.stack<buff.arcane_charge.max_stack
+actions.aoe+=/arcane_explosion,if=buff.arcane_charge.stack=buff.arcane_charge.max_stack&prev_gcd.1.arcane_barrage
+actions.aoe+=/evocation,interrupt_if=mana.pct>=85,interrupt_immediate=1
 
-actions.essences=blood_of_the_enemy,if=burn_phase&buff.arcane_power.down&buff.rune_of_power.down&buff.arcane_charge.stack=buff.arcane_charge.max_stack|time_to_die<cooldown.arcane_power.remains
-actions.essences+=/concentrated_flame,line_cd=6,if=buff.rune_of_power.down&buff.arcane_power.down&(!burn_phase|time_to_die<cooldown.arcane_power.remains)&mana.time_to_max>=execute_time
-actions.essences+=/reaping_flames,if=buff.rune_of_power.down&buff.arcane_power.down&(!burn_phase|time_to_die<cooldown.arcane_power.remains)&mana.time_to_max>=execute_time
-actions.essences+=/focused_azerite_beam,if=buff.rune_of_power.down&buff.arcane_power.down
-actions.essences+=/guardian_of_azeroth,if=buff.rune_of_power.down&buff.arcane_power.down
-actions.essences+=/purifying_blast,if=buff.rune_of_power.down&buff.arcane_power.down
-actions.essences+=/ripple_in_space,if=buff.rune_of_power.down&buff.arcane_power.down
-actions.essences+=/the_unbound_force,if=buff.rune_of_power.down&buff.arcane_power.down
-actions.essences+=/memory_of_lucid_dreams,if=!burn_phase&buff.arcane_power.down&cooldown.arcane_power.remains&buff.arcane_charge.stack=buff.arcane_charge.max_stack&(!talent.rune_of_power.enabled|action.rune_of_power.charges)|time_to_die<cooldown.arcane_power.remains
-actions.essences+=/worldvein_resonance,if=burn_phase&buff.arcane_power.down&buff.rune_of_power.down&buff.arcane_charge.stack=buff.arcane_charge.max_stack|time_to_die<cooldown.arcane_power.remains
+# Prioritize using grisly icicle with ap. Use it with totm otherwise.
+actions.cooldowns=frost_nova,if=runeforge.grisly_icicle&cooldown.arcane_power.remains>30&cooldown.touch_of_the_magi.remains=0&(buff.arcane_charge.stack<=variable.totm_max_charges&((talent.rune_of_power&cooldown.rune_of_power.remains<=gcd&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)|(!talent.rune_of_power&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)|cooldown.arcane_power.remains<=gcd))
+actions.cooldowns+=/frost_nova,if=runeforge.grisly_icicle&cooldown.arcane_power.remains=0&(!talent.enlightened|(talent.enlightened&mana.pct>=70))&((cooldown.touch_of_the_magi.remains>10&buff.arcane_charge.stack=buff.arcane_charge.max_stack)|(cooldown.touch_of_the_magi.remains=0&buff.arcane_charge.stack=0))&buff.rune_of_power.down&mana.pct>=variable.ap_minimum_mana_pct
+actions.cooldowns+=/frostbolt,if=runeforge.disciplinary_command&cooldown.buff_disciplinary_command.ready&buff.disciplinary_command_frost.down&(buff.arcane_power.down&buff.rune_of_power.down&debuff.touch_of_the_magi.down)&cooldown.touch_of_the_magi.remains=0&(buff.arcane_charge.stack<=variable.totm_max_charges&((talent.rune_of_power&cooldown.rune_of_power.remains<=gcd&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)|(!talent.rune_of_power&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)|cooldown.arcane_power.remains<=gcd))
+actions.cooldowns+=/fire_blast,if=runeforge.disciplinary_command&cooldown.buff_disciplinary_command.ready&buff.disciplinary_command_fire.down&prev_gcd.1.frostbolt
+# Always use mirrors with ap. If totm is ready as well, make sure to cast it before totm.
+actions.cooldowns+=/mirrors_of_torment,if=cooldown.touch_of_the_magi.remains=0&buff.arcane_charge.stack<=variable.totm_max_charges&cooldown.arcane_power.remains<=gcd
+actions.cooldowns+=/mirrors_of_torment,if=cooldown.arcane_power.remains=0&(!talent.enlightened|(talent.enlightened&mana.pct>=70))&((cooldown.touch_of_the_magi.remains>variable.ap_max_delay_for_totm&buff.arcane_charge.stack=buff.arcane_charge.max_stack)|(cooldown.touch_of_the_magi.remains=0&buff.arcane_charge.stack=0))&buff.rune_of_power.down&mana.pct>=variable.ap_minimum_mana_pct
+# Always use deathborne with ap. If totm is ready as well, make sure to cast it before totm.
+actions.cooldowns+=/deathborne,if=cooldown.touch_of_the_magi.remains=0&buff.arcane_charge.stack<=variable.totm_max_charges&cooldown.arcane_power.remains<=gcd
+actions.cooldowns+=/deathborne,if=cooldown.arcane_power.remains=0&(!talent.enlightened|(talent.enlightened&mana.pct>=70))&((cooldown.touch_of_the_magi.remains>10&buff.arcane_charge.stack=buff.arcane_charge.max_stack)|(cooldown.touch_of_the_magi.remains=0&buff.arcane_charge.stack=0))&buff.rune_of_power.down&mana.pct>=variable.ap_minimum_mana_pct
+# Use spark if totm and ap are on cd and won't be up for longer than the max delay, making sure we have at least two arcane charges and that totm wasn't just used.
+actions.cooldowns+=/radiant_spark,if=cooldown.touch_of_the_magi.remains>variable.rs_max_delay_for_totm&cooldown.arcane_power.remains>variable.rs_max_delay_for_ap&(talent.rune_of_power&(cooldown.rune_of_power.remains<execute_time|cooldown.rune_of_power.remains>variable.rs_max_delay_for_rop)|!talent.rune_of_power)&buff.arcane_charge.stack>2&debuff.touch_of_the_magi.down&buff.rune_of_power.down&buff.arcane_power.down
+# Use spark with ap when possible. If totm is ready as well, make sure to cast it before totm.
+actions.cooldowns+=/radiant_spark,if=cooldown.touch_of_the_magi.remains<execute_time&buff.arcane_charge.stack<=variable.totm_max_charges&cooldown.arcane_power.remains<(execute_time+action.touch_of_the_magi.execute_time)
+actions.cooldowns+=/radiant_spark,if=cooldown.arcane_power.remains<execute_time&((!talent.enlightened|(talent.enlightened&mana.pct>=70))&((cooldown.touch_of_the_magi.remains>variable.ap_max_delay_for_totm&buff.arcane_charge.stack=buff.arcane_charge.max_stack)|(cooldown.touch_of_the_magi.remains=0&buff.arcane_charge.stack=0))&buff.rune_of_power.down&mana.pct>=variable.ap_minimum_mana_pct)
+# Use totm with ap if it's within the max delay. If not, use with rop if the talent is taken, and it's within the max delay.
+actions.cooldowns+=/touch_of_the_magi,if=buff.arcane_charge.stack<=variable.totm_max_charges&cooldown.arcane_power.remains<=execute_time&mana.pct>variable.ap_minimum_mana_pct&buff.rune_of_power.down
+actions.cooldowns+=/touch_of_the_magi,if=buff.arcane_charge.stack<=variable.totm_max_charges&talent.rune_of_power&cooldown.rune_of_power.remains<=execute_time&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap
+actions.cooldowns+=/touch_of_the_magi,if=buff.arcane_charge.stack<=variable.totm_max_charges&(!talent.rune_of_power|cooldown.rune_of_power.remains>variable.totm_max_delay_for_rop)&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap
+# Use ap if totm is on cd and won't be up for longer than the max delay, making sure that we have enough mana and that there is not already a rune of power down.
+actions.cooldowns+=/arcane_power,if=cooldown.touch_of_the_magi.remains>variable.ap_max_delay_for_totm&buff.arcane_charge.stack=buff.arcane_charge.max_stack&buff.rune_of_power.down&mana.pct>=variable.ap_minimum_mana_pct
+# Use rop if totm is on cd and won't be up for longer than the max delay, making sure there isn't already a rune down and that ap won't become available during rune.
+actions.cooldowns+=/rune_of_power,if=buff.arcane_power.down&(cooldown.touch_of_the_magi.remains>variable.rop_max_delay_for_totm|cooldown.arcane_power.remains<=variable.totm_max_delay_for_ap)&buff.arcane_charge.stack=buff.arcane_charge.max_stack&cooldown.arcane_power.remains>12
+actions.cooldowns+=/shifting_power,if=buff.arcane_power.down&buff.rune_of_power.down&debuff.touch_of_the_magi.down
+# Use pom to squeeze an extra ab in the next cooldown window, unless kyrian then only during arcane power due to how mana hungry radiant spark is
+actions.cooldowns+=/presence_of_mind,if=talent.rune_of_power&buff.arcane_power.up&buff.rune_of_power.remains<gcd.max
+actions.cooldowns+=/presence_of_mind,if=debuff.touch_of_the_magi.up&debuff.touch_of_the_magi.remains<action.arcane_missiles.execute_time&!covenant.kyrian
+actions.cooldowns+=/presence_of_mind,if=buff.rune_of_power.up&buff.rune_of_power.remains<gcd.max&cooldown.evocation.ready&cooldown.touch_of_the_magi.remains&!covenant.kyrian
+
+actions.final_burn=arcane_missiles,if=buff.clearcasting.react,chain=1
+actions.final_burn+=/arcane_blast
+actions.final_burn+=/arcane_barrage
 
 actions.movement=blink_any,if=movement.distance>=10
 actions.movement+=/presence_of_mind
-actions.movement+=/arcane_missiles
+actions.movement+=/arcane_missiles,if=movement.distance<10
 actions.movement+=/arcane_orb
-actions.movement+=/supernova
+actions.movement+=/fire_blast
 
-head=soulfuel_headdress,id=159279,bonus_id=4779/1512/4786/4775,azerite_powers=374/22/13
-neck=heart_of_azeroth,id=158075,bonus_id=4929/1524,azerite_level=27
-shoulders=exquisitely_aerodynamic_shoulderpads,id=159232,bonus_id=4779/1512/4786/4775,azerite_powers=374/22/13
-back=raals_bib,id=159294,bonus_id=4779/1512/4786
-chest=blooddrenched_robes,id=159241,bonus_id=4779/1512/4786/4775,azerite_powers=374/31/13
-wrists=wraps_of_everliving_fealty,id=158348,bonus_id=4779/1512/4786
-hands=greasy_bacongrabbers,id=155891,bonus_id=4779/1512/4786
-waist=sailcloth_waistband,id=158346,bonus_id=4779/1512/4786
-legs=wild_pyromancers_trousers,id=159277,bonus_id=4779/1512/4786
-feet=sandals_of_wise_voodoo,id=159243,bonus_id=4779/1512/4786
-finger1=lord_waycrests_signet,id=158362,bonus_id=4779/1512/4786,enchant=pact_of_critical_strike
-finger2=band_of_the_ancient_dredger,id=159461,bonus_id=4779/1512/4786,enchant=pact_of_critical_strike
-trinket1=balefire_branch,id=159630,bonus_id=4779/1512/4786
-trinket2=conch_of_dark_whispers,id=159620,bonus_id=4779/1512/4786
-main_hand=aqmar_the_tidecaller,id=159646,bonus_id=4779/1512/4786,enchant=torrent_of_elements
-off_hand=aureus_vessel,id=158322,bonus_id=4779/1512/4786
+actions.opener=evocation,if=(runeforge.siphon_storm|runeforge.temporal_warp)&talent.rune_of_power&cooldown.rune_of_power.remains&(buff.rune_of_power.down|prev_gcd.1.arcane_barrage)
+actions.opener+=/fire_blast,if=runeforge.disciplinary_command&buff.disciplinary_command_frost.up
+actions.opener+=/frost_nova,if=runeforge.grisly_icicle&mana.pct>95
+actions.opener+=/deathborne,if=!runeforge.siphon_storm
+actions.opener+=/radiant_spark,if=mana.pct>40
+actions.opener+=/shifting_power,if=buff.arcane_power.down&cooldown.arcane_power.remains&!variable.inverted_opener=1
+actions.opener+=/arcane_orb,if=variable.inverted_opener=1&cooldown.rune_of_power.remains=0
+actions.opener+=/arcane_blast,if=variable.inverted_opener=1&cooldown.rune_of_power.remains=0&buff.arcane_charge.stack<buff.arcane_charge.max_stack
+actions.opener+=/rune_of_power,if=variable.inverted_opener=1&buff.rune_of_power.down
+actions.opener+=/potion,if=variable.inverted_opener=1&!(runeforge.siphon_storm|runeforge.temporal_warp)
+actions.opener+=/deathborne,if=buff.rune_of_power.down
+actions.opener+=/mirrors_of_torment,if=buff.rune_of_power.down|prev_gcd.1.arcane_barrage
+actions.opener+=/touch_of_the_magi,if=buff.rune_of_power.down|prev_gcd.1.arcane_barrage
+actions.opener+=/arcane_power,if=prev_gcd.1.touch_of_the_magi
+actions.opener+=/rune_of_power,if=buff.rune_of_power.down
+actions.opener+=/presence_of_mind,if=debuff.touch_of_the_magi.up&debuff.touch_of_the_magi.remains<action.arcane_missiles.execute_time
+actions.opener+=/presence_of_mind,if=talent.rune_of_power&buff.arcane_power.up&buff.rune_of_power.remains<gcd.max
+actions.opener+=/arcane_blast,if=dot.radiant_spark.remains>5|debuff.radiant_spark_vulnerability.stack>0
+actions.opener+=/arcane_blast,if=buff.presence_of_mind.up&debuff.touch_of_the_magi.up&debuff.touch_of_the_magi.remains<=action.arcane_blast.execute_time
+actions.opener+=/arcane_barrage,if=buff.rune_of_power.up&cooldown.arcane_power.ready&mana.pct<40&buff.arcane_charge.stack=buff.arcane_charge.max_stack&!runeforge.siphon_storm&!runeforge.temporal_warp
+actions.opener+=/arcane_barrage,if=buff.rune_of_power.up&buff.arcane_power.down&buff.rune_of_power.remains<=gcd&buff.arcane_charge.stack=buff.arcane_charge.max_stack&variable.inverted_opener
+actions.opener+=/arcane_missiles,if=debuff.touch_of_the_magi.up&talent.arcane_echo&(buff.deathborne.down|active_enemies=1)&debuff.touch_of_the_magi.remains>action.arcane_missiles.execute_time&(!azerite.arcane_pummeling.enabled|buff.clearcasting_channel.down),chain=1,early_chain_if=buff.clearcasting_channel.down&(buff.arcane_power.up|(!talent.overpowered&(buff.rune_of_power.up|cooldown.evocation.ready)))
+actions.opener+=/arcane_missiles,if=buff.clearcasting.react&cooldown.arcane_power.remains&(buff.rune_of_power.up|buff.arcane_power.up),chain=1
+actions.opener+=/arcane_missiles,if=buff.clearcasting.react&buff.clearcasting.stack=buff.clearcasting.max_stack,chain=1
+actions.opener+=/arcane_orb,if=buff.arcane_charge.stack<=variable.totm_max_charges&(cooldown.arcane_power.remains>10|active_enemies<=2)
+actions.opener+=/arcane_blast,if=buff.rune_of_power.up|mana.pct>15
+actions.opener+=/evocation,if=buff.rune_of_power.down&buff.arcane_power.down,interrupt_if=mana.pct>=85,interrupt_immediate=1
+actions.opener+=/arcane_barrage
+
+actions.rotation=cancel_action,if=action.evocation.channeling&mana.pct>=95&(!runeforge.siphon_storm|buff.siphon_storm.stack=buff.siphon_storm.max_stack)
+actions.rotation+=/evocation,if=mana.pct<=variable.evo_pct&(cooldown.touch_of_the_magi.remains<=action.evocation.execute_time|cooldown.arcane_power.remains<=action.evocation.execute_time|(talent.rune_of_power&cooldown.rune_of_power.remains<=action.evocation.execute_time))&buff.rune_of_power.down&buff.arcane_power.down&debuff.touch_of_the_magi.down&!prev_gcd.1.touch_of_the_magi
+actions.rotation+=/evocation,if=runeforge.siphon_storm&cooldown.arcane_power.remains<=action.evocation.execute_time
+# Barrage if it's time to use totm and we have too many charges
+actions.rotation+=/arcane_barrage,if=cooldown.touch_of_the_magi.ready&(buff.arcane_charge.stack>variable.totm_max_charges&cooldown.arcane_power.remains<=execute_time&mana.pct>variable.ap_minimum_mana_pct&buff.rune_of_power.down)
+actions.rotation+=/arcane_barrage,if=cooldown.touch_of_the_magi.ready&(buff.arcane_charge.stack>variable.totm_max_charges&talent.rune_of_power&cooldown.rune_of_power.remains<=execute_time&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)
+actions.rotation+=/arcane_barrage,if=cooldown.touch_of_the_magi.ready&(buff.arcane_charge.stack>variable.totm_max_charges&(!talent.rune_of_power|cooldown.rune_of_power.remains>variable.totm_max_delay_for_rop)&cooldown.arcane_power.remains>variable.totm_max_delay_for_ap)
+actions.rotation+=/arcane_barrage,if=debuff.radiant_spark_vulnerability.stack=debuff.radiant_spark_vulnerability.max_stack&(buff.arcane_power.down|buff.arcane_power.remains<=gcd)&(buff.rune_of_power.down|buff.rune_of_power.remains<=gcd)
+actions.rotation+=/arcane_blast,if=dot.radiant_spark.remains>8|(debuff.radiant_spark_vulnerability.stack>0&debuff.radiant_spark_vulnerability.stack<debuff.radiant_spark_vulnerability.max_stack)
+actions.rotation+=/arcane_blast,if=buff.presence_of_mind.up&debuff.touch_of_the_magi.up&debuff.touch_of_the_magi.remains<=action.arcane_blast.execute_time
+actions.rotation+=/arcane_missiles,if=debuff.touch_of_the_magi.up&talent.arcane_echo&(buff.deathborne.down|active_enemies=1)&(debuff.touch_of_the_magi.remains>action.arcane_missiles.execute_time|cooldown.presence_of_mind.remains|covenant.kyrian)&(!azerite.arcane_pummeling.enabled|buff.clearcasting_channel.down),chain=1,early_chain_if=buff.clearcasting_channel.down&(buff.arcane_power.up|(!talent.overpowered&(buff.rune_of_power.up|cooldown.evocation.ready)))
+actions.rotation+=/arcane_missiles,if=buff.clearcasting.react&buff.expanded_potential.up
+actions.rotation+=/arcane_missiles,if=buff.clearcasting.react&(buff.arcane_power.up|buff.rune_of_power.up|debuff.touch_of_the_magi.remains>action.arcane_missiles.execute_time),chain=1
+actions.rotation+=/arcane_missiles,if=buff.clearcasting.react&buff.clearcasting.stack=buff.clearcasting.max_stack,chain=1
+actions.rotation+=/arcane_missiles,if=buff.clearcasting.react&buff.clearcasting.remains<=((buff.clearcasting.stack*action.arcane_missiles.execute_time)+gcd),chain=1
+actions.rotation+=/nether_tempest,if=(refreshable|!ticking)&buff.arcane_charge.stack=buff.arcane_charge.max_stack&buff.arcane_power.down&debuff.touch_of_the_magi.down
+actions.rotation+=/arcane_orb,if=buff.arcane_charge.stack<=variable.totm_max_charges
+actions.rotation+=/supernova,if=mana.pct<=95&buff.arcane_power.down&buff.rune_of_power.down&debuff.touch_of_the_magi.down
+actions.rotation+=/arcane_blast,if=buff.rule_of_threes.up&buff.arcane_charge.stack>3
+actions.rotation+=/arcane_barrage,if=mana.pct<=variable.barrage_mana_pct&buff.arcane_power.down&buff.rune_of_power.down&debuff.touch_of_the_magi.down&buff.arcane_charge.stack=buff.arcane_charge.max_stack&cooldown.evocation.remains
+actions.rotation+=/arcane_barrage,if=buff.arcane_power.down&buff.rune_of_power.down&debuff.touch_of_the_magi.down&buff.arcane_charge.stack=buff.arcane_charge.max_stack&talent.arcane_orb&cooldown.arcane_orb.remains<=gcd&mana.pct<=90&cooldown.evocation.remains
+actions.rotation+=/arcane_barrage,if=buff.arcane_power.up&buff.arcane_power.remains<=gcd&buff.arcane_charge.stack=buff.arcane_charge.max_stack&cooldown.evocation.remains
+actions.rotation+=/arcane_barrage,if=buff.rune_of_power.up&buff.arcane_power.down&buff.rune_of_power.remains<=gcd&buff.arcane_charge.stack=buff.arcane_charge.max_stack&cooldown.evocation.remains
+actions.rotation+=/arcane_barrage,if=buff.arcane_power.down&buff.rune_of_power.down&debuff.touch_of_the_magi.up&debuff.touch_of_the_magi.remains<=gcd&buff.arcane_charge.stack=buff.arcane_charge.max_stack
+actions.rotation+=/arcane_barrage,if=target.health.pct<35&buff.arcane_charge.stack=buff.arcane_charge.max_stack&runeforge.arcane_bombardment&active_enemies>1&buff.deathborne.down
+actions.rotation+=/arcane_explosion,if=target.health.pct<35&buff.arcane_charge.stack<buff.arcane_charge.max_stack&runeforge.arcane_bombardment&active_enemies>1&buff.deathborne.down
+actions.rotation+=/arcane_blast
+actions.rotation+=/evocation,if=buff.rune_of_power.down&buff.arcane_power.down&debuff.touch_of_the_magi.down
+actions.rotation+=/arcane_barrage
+
+actions.shared_cds=use_mana_gem,if=(talent.enlightened&mana.pct<=80&mana.pct>=65)|(!talent.enlightened&mana.pct<=85)
+actions.shared_cds+=/potion,if=buff.arcane_power.up
+actions.shared_cds+=/time_warp,if=runeforge.temporal_warp&buff.exhaustion.up&(cooldown.arcane_power.ready|fight_remains<=40)
+actions.shared_cds+=/lights_judgment,if=buff.arcane_power.down&buff.rune_of_power.down&debuff.touch_of_the_magi.down
+actions.shared_cds+=/bag_of_tricks,if=buff.arcane_power.down&buff.rune_of_power.down&debuff.touch_of_the_magi.down
+actions.shared_cds+=/berserking,if=buff.arcane_power.up
+actions.shared_cds+=/blood_fury,if=buff.arcane_power.up
+actions.shared_cds+=/fireblood,if=buff.arcane_power.up
+actions.shared_cds+=/ancestral_call,if=buff.arcane_power.up
+actions.shared_cds+=/use_items,if=buff.arcane_power.up
+actions.shared_cds+=/use_item,effect_name=gladiators_badge,if=buff.arcane_power.up|cooldown.arcane_power.remains>=55&debuff.touch_of_the_magi.up
+actions.shared_cds+=/use_item,name=empyreal_ordnance,if=cooldown.arcane_power.remains<=20
+actions.shared_cds+=/use_item,name=dreadfire_vessel,if=cooldown.arcane_power.remains>=20|!variable.ap_on_use=1|(time=0&variable.inverted_opener=1&runeforge.siphon_storm)
+actions.shared_cds+=/use_item,name=soul_igniter,if=cooldown.arcane_power.remains>=20|!variable.ap_on_use=1|(time=0&variable.inverted_opener=1&runeforge.siphon_storm)
+actions.shared_cds+=/use_item,name=glyph_of_assimilation,if=cooldown.arcane_power.remains>=20|!variable.ap_on_use=1|(time=0&variable.inverted_opener=1&runeforge.siphon_storm)
+actions.shared_cds+=/use_item,name=macabre_sheet_music,if=cooldown.arcane_power.remains<=5&(!variable.inverted_opener=1|time>30)
+actions.shared_cds+=/use_item,name=macabre_sheet_music,if=cooldown.arcane_power.remains<=5&variable.inverted_opener=1&buff.rune_of_power.up&buff.rune_of_power.remains<=(10-5*runeforge.siphon_storm)&time<30
+
+head=abominable_visage,id=178732,bonus_id=6807/1498/6646
+neck=trailspinner_pendant,id=178707,bonus_id=6807/1498/6646
+shoulders=castigators_mantle,id=178859,bonus_id=6807/1498/6646
+back=cloak_of_enveloping_manifestations,id=178851,bonus_id=6807/1498/6646
+chest=soulsewn_vestments,id=178792,bonus_id=6807/1498/6646,enchant=eternal_insight
+wrists=necropolis_lords_shackles,id=178782,bonus_id=6807/1498/6646,enchant=eternal_intellect
+hands=gory_surgeons_gloves,id=178748,bonus_id=6807/1498/6646
+waist=sash_of_exquisite_acquisitions,id=179343,bonus_id=6807/1498/6646
+legs=beryllias_leggings_of_endless_torment,id=178838,bonus_id=6807/1498/6646
+feet=stradamas_misplaced_slippers,id=178756,bonus_id=6807/1498/6646
+finger1=shadowghast_ring,id=178926,bonus_id=6647/6648/6716/6834/1487,enchant=tenet_of_mastery
+finger2=bloodoath_signet,id=178871,bonus_id=6807/1498/6646,enchant=tenet_of_mastery
+trinket1=empyreal_ordnance,id=180117,bonus_id=6807/1498/6646
+trinket2=soulletting_ruby,id=178809,bonus_id=6807/1498/6646
+main_hand=whizblast_walking_stick,id=179339,bonus_id=6807/1498/6646,enchant=sinful_revelation
 
 # Gear Summary
-# gear_ilvl=341.38
-# gear_stamina=4465
-# gear_intellect=3421
-# gear_crit_rating=1009
-# gear_haste_rating=753
-# gear_mastery_rating=352
-# gear_versatility_rating=512
-# gear_armor=873
+# gear_ilvl=184.40
+# gear_stamina=857
+# gear_intellect=723
+# gear_crit_rating=472
+# gear_haste_rating=85
+# gear_mastery_rating=763
+# gear_versatility_rating=136
+# gear_armor=291

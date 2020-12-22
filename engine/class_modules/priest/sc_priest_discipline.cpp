@@ -3,11 +3,11 @@
 // Send questions to natehieter@gmail.com
 // ==========================================================================
 
-#include "simulationcraft.hpp"
-
 #include "player/covenant.hpp"
 #include "sc_enums.hpp"
 #include "sc_priest.hpp"
+
+#include "simulationcraft.hpp"
 
 namespace priestspace
 {
@@ -105,7 +105,6 @@ struct penance_t final : public priest_spell_t
       // Add 1 extra millisecond, so we only get 4 ticks instead of an extra tiny 5th tick.
       base_tick_time = timespan_t::from_seconds( 2.0 / 3 ) + timespan_t::from_millis( 1 );
     }
-    dot_duration += priest().sets->set( PRIEST_DISCIPLINE, T17, B2 )->effectN( 1 ).time_value();
 
     dynamic_tick_action = true;
     tick_action         = penance_tick_action;
@@ -170,6 +169,8 @@ struct power_word_solace_t final : public priest_spell_t
   {
     parse_options( options_str );
 
+    cooldown->hasted = true;
+
     travel_speed = 0.0;  // DBC has default travel taking 54seconds.....
   }
 
@@ -193,15 +194,6 @@ struct purge_the_wicked_t final : public priest_spell_t
       // tick_zero = false;
       energize_type = action_energize::NONE;  // disable resource generation from spell data
       background    = true;
-    }
-
-    double bonus_ta( const action_state_t* state ) const override
-    {
-      double d = priest_spell_t::bonus_ta( state );
-
-      d += get_death_throes_bonus();
-
-      return d;
     }
 
     void tick( dot_t* d ) override
@@ -264,6 +256,26 @@ struct shadow_covenant_t final : public priest_spell_t
     priest().buffs.shadow_covenant->trigger();
   }
 };
+
+// Implemented as a dummy effect, without providing absorbs
+struct spirit_shell_t final : public priest_spell_t
+{
+  spirit_shell_t( priest_t& player, util::string_view options_str )
+    : priest_spell_t( "spirit_shell", player, player.talents.spirit_shell )
+  {
+    parse_options( options_str );
+
+    harmful = false;
+  }
+
+  virtual void execute() override
+  {
+    priest_spell_t::execute();
+
+    priest().buffs.spirit_shell->trigger();
+  }
+};
+
 }  // namespace spells
 
 }  // namespace actions
@@ -284,6 +296,8 @@ void priest_t::create_buffs_discipline()
 
   buffs.shadow_covenant = make_buff( this, "shadow_covenant", talents.shadow_covenant->effectN( 4 ).trigger() )
                               ->set_trigger_spell( talents.shadow_covenant );
+
+  buffs.spirit_shell = make_buff( this, "spirit_shell", talents.spirit_shell );
 }
 
 void priest_t::init_rng_discipline()
@@ -318,33 +332,13 @@ void priest_t::init_spells_discipline()
   talents.divine_star      = find_talent_spell( "Divine Star" );
   talents.halo             = find_talent_spell( "Halo" );
   // T50
-  talents.lights_caress    = find_talent_spell( "Light's Caress" );
-  talents.luminous_barrier = find_talent_spell( "Luminous Barrier" );
-  talents.evangelism       = find_talent_spell( "Evangelism" );
+  talents.lenience     = find_talent_spell( "Lenience" );
+  talents.spirit_shell = find_talent_spell( "Spirit Shell" );
+  talents.evangelism   = find_talent_spell( "Evangelism" );
 
   // Passive spell data
   specs.discipline_priest      = find_specialization_spell( "Discipline Priest" );
   specs.power_of_the_dark_side = find_specialization_spell( "Power of the Dark Side" );
-
-  // Azerite
-  azerite.death_throes = find_azerite_spell( "Death Throes" );
-
-  // Range Based on Talents
-  if ( base.distance != 5 && specialization() == PRIEST_DISCIPLINE )
-  {
-    if ( talents.divine_star->ok() )
-    {
-      base.distance = 24.0;
-    }
-    else if ( talents.halo->ok() )
-    {
-      base.distance = 27.0;
-    }
-    else
-    {
-      base.distance = 27.0;
-    }
-  }
 }
 
 action_t* priest_t::create_action_discipline( util::string_view name, util::string_view options_str )
@@ -375,6 +369,10 @@ action_t* priest_t::create_action_discipline( util::string_view name, util::stri
   if ( name == "shadow_covenant" )
   {
     return new shadow_covenant_t( *this, options_str );
+  }
+  if ( name == "spirit_shell" )
+  {
+    return new spirit_shell_t( *this, options_str );
   }
 
   return nullptr;
@@ -415,65 +413,60 @@ void priest_t::generate_apl_discipline_h()
 /** Discipline Damage Combat Action Priority List */
 void priest_t::generate_apl_discipline_d()
 {
-  action_priority_list_t* def  = get_action_priority_list( "default" );
-  action_priority_list_t* boon = get_action_priority_list( "boon" );
+  action_priority_list_t* def     = get_action_priority_list( "default" );
+  action_priority_list_t* boon    = get_action_priority_list( "boon" );
+  action_priority_list_t* racials = get_action_priority_list( "racials" );
 
   boon->add_action( "ascended_blast" );
   boon->add_action( "ascended_nova" );
 
   // On-Use Items
-  for ( const auto& item_action : get_item_actions() )
-  {
-    def->add_action( item_action );
-  }
-
-  // Professions
-  for ( const auto& profession_action : get_profession_actions() )
-  {
-    def->add_action( profession_action );
-  }
+  def->add_action( "use_items", "Default fallback for usable items: Use on cooldown in order by trinket slot." );
 
   // Potions
-  if ( sim->allow_potions && true_level >= 80 )
+  if ( sim->allow_potions )
   {
-    def->add_action( "potion,if=buff.bloodlust.react|target.time_to_die<=40" );
+    def->add_action( "potion,if=buff.bloodlust.react|buff.power_infusion.up|target.time_to_die<=40",
+                     "Sync potion usage with Bloodlust or Power Infusion." );
   }
 
-  if ( race == RACE_BLOOD_ELF )
-  {
-    def->add_action( "arcane_torrent,if=mana.pct<=95" );
-  }
-
-  if ( find_class_spell( "Shadowfiend" )->ok() )
-  {
-    def->add_action( "mindbender,if=talent.mindbender.enabled" );
-    def->add_action( "shadowfiend,if=!talent.mindbender.enabled" );
-  }
+  // Racials
+  racials->add_action( "arcane_torrent,if=mana.pct<=95" );
 
   if ( race != RACE_BLOOD_ELF )
   {
     for ( const auto& racial_action : get_racial_actions() )
     {
-      def->add_action( racial_action );
+      racials->add_action( racial_action );
     }
   }
 
-  def->add_action( this, "Power Infusion" );
-  def->add_talent( this, "Shadow Covenant" );
-  def->add_action( this, covenant.boon_of_the_ascended, "Boon of the Ascended" );
+  def->add_call_action_list( racials );
+  def->add_action( this, "Power Infusion", "",
+                   "Use Power Infusion before Shadow Covenant to make sure we don't lock out our CD." );
+  def->add_talent( this, "Divine Star" );
+  def->add_talent( this, "Halo" );
+  def->add_action( this, "Penance" );
+  def->add_talent( this, "Power Word: Solace" );
+  def->add_talent( this, "Shadow Covenant",
+                   "if=!covenant.kyrian|(!cooldown.boon_of_the_ascended.up&!buff.boon_of_the_ascended.up)",
+                   "Hold Shadow Covenant if Boon of the Ascended cooldown is up or the buff is active." );
+  def->add_talent( this, "Schism" );
+  def->add_action( this, covenant.mindgames, "mindgames" );
+  def->add_action( this, covenant.fae_guardians, "fae_guardians" );
+  def->add_action( this, covenant.unholy_nova, "unholy_nova" );
+  def->add_action( this, covenant.boon_of_the_ascended, "boon_of_the_ascended" );
   def->add_call_action_list( this, covenant.boon_of_the_ascended, boon, "if=buff.boon_of_the_ascended.up" );
+  def->add_action( "mindbender" );
+  def->add_talent( this, "Spirit Shell" );
   def->add_talent( this, "Purge the Wicked", "if=!ticking" );
   def->add_action( this, "Shadow Word: Pain", "if=!ticking&!talent.purge_the_wicked.enabled" );
   def->add_action( this, "Shadow Word: Death" );
-
-  def->add_talent( this, "Schism" );
   def->add_action( this, "Mind Blast" );
-  def->add_action( this, "Penance" );
-  def->add_talent( this, "Purge the Wicked", "if=remains<(duration*0.3)" );
-  def->add_action( this, "Shadow Word: Pain", "if=remains<(duration*0.3)&!talent.purge_the_wicked.enabled" );
-  def->add_talent( this, "Power Word: Solace" );
-  def->add_talent( this, "Divine Star", "if=mana.pct>80" );
-  def->add_action( this, "Smite" );
+  def->add_talent( this, "Purge the Wicked", "if=refreshable" );
+  def->add_action( this, "Shadow Word: Pain", "if=refreshable&!talent.purge_the_wicked.enabled" );
+  def->add_action( this, "Smite", "if=spell_targets.holy_nova<3", "Use Smite on up to 2 targets." );
+  def->add_action( this, "Holy Nova", "if=spell_targets.holy_nova>=3" );
   def->add_action( this, "Shadow Word: Pain" );
 }
 

@@ -1,18 +1,20 @@
 demonhunter="PR_Demon_Hunter_Vengeance"
 source=default
 spec=vengeance
-level=120
+level=60
 race=night_elf
 timeofday=night
 role=tank
 position=front
-talents=1213121
+talents=1233321
+covenant=kyrian
+soulbind=pelagos,combat_meditation/repeat_decree:4
 
 # Default consumables
-potion=potion_of_unbridled_fury
-flask=greater_flask_of_the_currents
-food=famine_evaluator_and_snack_table
-augmentation=battle_scarred
+potion=phantom_fire
+flask=spectral_flask_of_power
+food=feast_of_gluttonous_hedonism
+augmentation=veiled
 
 # This default action priority list is automatically created based on your character.
 # It is a attempt to provide you with a action list that is both simple and practicable,
@@ -31,73 +33,68 @@ actions.precombat+=/use_item,name=azsharas_font_of_power
 
 # Executed every time the actor is available.
 actions=auto_attack
+actions+=/variable,name=brand_build,value=talent.agonizing_flames.enabled&talent.burning_alive.enabled&talent.charred_flesh.enabled
+actions+=/disrupt
 actions+=/consume_magic
-actions+=/call_action_list,name=brand,if=talent.charred_flesh.enabled
+actions+=/throw_glaive,if=buff.fel_bombardment.stack=5&(buff.immolation_aura.up|!buff.metamorphosis.up)
+actions+=/call_action_list,name=brand,if=variable.brand_build
 actions+=/call_action_list,name=defensives
 actions+=/call_action_list,name=cooldowns
 actions+=/call_action_list,name=normal
 
 # Fiery Brand Rotation
-actions.brand=sigil_of_flame,if=cooldown.fiery_brand.remains<2
-actions.brand+=/infernal_strike,if=cooldown.fiery_brand.remains=0
-actions.brand+=/fiery_brand
+actions.brand=fiery_brand
 actions.brand+=/immolation_aura,if=dot.fiery_brand.ticking
-actions.brand+=/fel_devastation,if=dot.fiery_brand.ticking
-actions.brand+=/infernal_strike,if=dot.fiery_brand.ticking
-actions.brand+=/sigil_of_flame,if=dot.fiery_brand.ticking
 
 actions.cooldowns=potion
-actions.cooldowns+=/concentrated_flame,if=(!dot.concentrated_flame_burn.ticking&!action.concentrated_flame.in_flight|full_recharge_time<gcd.max)
-actions.cooldowns+=/worldvein_resonance,if=buff.lifeblood.stack<3
-actions.cooldowns+=/memory_of_lucid_dreams
-# Default fallback for usable essences.
-actions.cooldowns+=/heart_essence
-actions.cooldowns+=/use_item,effect_name=cyclotronic_blast,if=buff.memory_of_lucid_dreams.down
-actions.cooldowns+=/use_item,name=ashvanes_razor_coral,if=debuff.razor_coral_debuff.down|debuff.conductive_ink_debuff.up&target.health.pct<31|target.time_to_die<20
 # Default fallback for usable items.
 actions.cooldowns+=/use_items
+actions.cooldowns+=/sinful_brand,if=!dot.sinful_brand.ticking
+actions.cooldowns+=/the_hunt
+actions.cooldowns+=/fodder_to_the_flame
+actions.cooldowns+=/elysian_decree
 
 # Defensives
 actions.defensives=demon_spikes
-actions.defensives+=/metamorphosis
+actions.defensives+=/metamorphosis,if=!buff.metamorphosis.up&(!covenant.venthyr.enabled|!dot.sinful_brand.ticking)|target.time_to_die<15
 actions.defensives+=/fiery_brand
 
 # Normal Rotation
-actions.normal=infernal_strike,if=(!talent.flame_crash.enabled|(dot.sigil_of_flame.remains<3&!action.infernal_strike.sigil_placed))
-actions.normal+=/spirit_bomb,if=((buff.metamorphosis.up&soul_fragments>=3)|soul_fragments>=4)
-actions.normal+=/soul_cleave,if=(!talent.spirit_bomb.enabled&((buff.metamorphosis.up&soul_fragments>=3)|soul_fragments>=4))
-actions.normal+=/soul_cleave,if=talent.spirit_bomb.enabled&soul_fragments=0
-actions.normal+=/immolation_aura,if=pain<=90
-actions.normal+=/felblade,if=pain<=70
-actions.normal+=/fracture,if=soul_fragments<=3
+actions.normal=infernal_strike
+actions.normal+=/bulk_extraction
+actions.normal+=/spirit_bomb,if=((buff.metamorphosis.up&talent.fracture.enabled&soul_fragments>=3)|soul_fragments>=4)
 actions.normal+=/fel_devastation
-actions.normal+=/sigil_of_flame
+actions.normal+=/soul_cleave,if=((talent.spirit_bomb.enabled&soul_fragments=0)|!talent.spirit_bomb.enabled)&((talent.fracture.enabled&fury>=55)|(!talent.fracture.enabled&fury>=70)|cooldown.fel_devastation.remains>target.time_to_die|(buff.metamorphosis.up&((talent.fracture.enabled&fury>=35)|(!talent.fracture.enabled&fury>=50))))
+actions.normal+=/immolation_aura,if=((variable.brand_build&cooldown.fiery_brand.remains>10)|!variable.brand_build)&fury<=90
+actions.normal+=/felblade,if=fury<=60
+actions.normal+=/fracture,if=((talent.spirit_bomb.enabled&soul_fragments<=3)|(!talent.spirit_bomb.enabled&((buff.metamorphosis.up&fury<=55)|(buff.metamorphosis.down&fury<=70))))
+actions.normal+=/sigil_of_flame,if=!(covenant.kyrian.enabled&runeforge.razelikhs_defilement)
 actions.normal+=/shear
 actions.normal+=/throw_glaive
 
-head=irontide_captains_hat,id=155888,bonus_id=4779/1512/4786/4775,azerite_powers=479/30/85/13
-neck=heart_of_azeroth,id=158075,bonus_id=4929/1524,azerite_level=27
-shoulders=mantle_of_fastidious_machinations,id=158304,bonus_id=4779/1512/4786/4775,azerite_powers=157/461/83/13
-back=cloak_of_questionable_intent,id=159287,bonus_id=4779/1512/4786
-chest=spymasters_wrap,id=155860,bonus_id=4779/1512/4786/4775,azerite_powers=481/462/202/13
-wrists=sea_dogs_cuffs,id=158305,bonus_id=4779/1512/4786
-hands=gloves_of_corrupted_waters,id=159321,bonus_id=4779/1512/4786
-waist=belt_of_gleaming_determination,id=158306,bonus_id=4779/1512/4786
-legs=singeblotched_britches,id=159306,bonus_id=4779/1512/4786
-feet=mercenary_miners_boots,id=159336,bonus_id=4779/1512/4786
-finger1=ritual_binders_ring,id=159459,bonus_id=4779/1512/4786,enchant=pact_of_haste
-finger2=seal_of_the_regal_loa,id=159458,bonus_id=4779/1512/4786,enchant=pact_of_haste
-trinket1=galecallers_boon,id=159614,bonus_id=4779/1512/4786
-trinket2=lustrous_golden_plumage,id=159617,bonus_id=4779/1512/4786
-main_hand=warglaive_of_the_sand_queen,id=160110,bonus_id=4779/1512/4786,enchant=versatile_navigation
-off_hand=warglaive_of_the_sand_queen,id=160110,bonus_id=4779/1512/4786,enchant=quick_navigation
+head=vicious_surge_faceguard,id=180106,bonus_id=6807/1498/6646
+neck=sin_stained_pendant,id=178827,bonus_id=6807/1498/6646
+shoulders=wicked_bladewing_pauldrons,id=178858,bonus_id=6807/1498/6646
+back=blighted_margraves_cloak,id=178755,bonus_id=6807/1498/6646
+chest=rainshadow_hauberk,id=178698,bonus_id=6807/1498/6646,enchant=eternal_skirmish
+wrists=risen_monstrosity_cuffs,id=178741,bonus_id=6807/1498/6646
+hands=gloves_of_haunting_fixation,id=178832,bonus_id=6807/1498/6646
+waist=sapgorger_belt,id=178699,bonus_id=6807/1498/6646
+legs=umbrahide_leggings,id=172318,bonus_id=6649/6650/6716/7046/1487
+feet=vanquished_usurpers_footpads,id=178797,bonus_id=6807/1498/6646,enchant=eternal_agility
+finger1=stitchfleshs_misplaced_signet,id=178736,bonus_id=6807/1498/6646,enchant=tenet_of_haste
+finger2=bloodoath_signet,id=178871,bonus_id=6807/1498/6646,enchant=tenet_of_haste
+trinket1=phial_of_putrefaction,id=178771,bonus_id=6807/1498/6646
+trinket2=bottled_flayedwing_toxin,id=178742,bonus_id=6807/1498/6646
+main_hand=stone_generals_edge,id=178857,bonus_id=6807/1498/6646,enchant=lightless_force
+off_hand=poxstorm_longsword_of_pestilence,id=178754,bonus_id=6807/1498/6646,enchant=lightless_force
 
 # Gear Summary
-# gear_ilvl=341.38
-# gear_agility=2883
-# gear_stamina=4465
-# gear_crit_rating=255
-# gear_haste_rating=1200
-# gear_mastery_rating=209
-# gear_versatility_rating=822
-# gear_armor=1430
+# gear_ilvl=184.38
+# gear_agility=587
+# gear_stamina=860
+# gear_crit_rating=141
+# gear_haste_rating=789
+# gear_mastery_rating=93
+# gear_versatility_rating=347
+# gear_armor=479
