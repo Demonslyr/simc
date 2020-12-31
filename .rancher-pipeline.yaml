@@ -1,0 +1,18 @@
+stages:
+- name: build
+  steps:
+  - publishImageConfig:
+      dockerfilePath: ./Dockerfile
+      buildContext: .
+      tag: atriarch-simc-simulation:v1.0.${CICD_EXECUTION_SEQUENCE}
+      pushRemote: true
+      registry: docker.atriarch.systems
+    env:
+      PLUGIN_MTU: "1400"
+timeout: 5
+notification:
+  recipients:
+  - recipient: dan@mail.atriarch.systems
+    notifier: c-56lvs:n-45qs9
+  condition:
+  - Failed
