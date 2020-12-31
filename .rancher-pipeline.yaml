@@ -4,7 +4,7 @@ stages:
   - publishImageConfig:
       dockerfilePath: ./Dockerfile
       buildContext: .
-      tag: atriarch-simc-simulation:v1.0.${CICD_EXECUTION_SEQUENCE}
+      tag: atriarch-simc-simulation:latest
       pushRemote: true
       registry: docker.atriarch.systems
     env:
