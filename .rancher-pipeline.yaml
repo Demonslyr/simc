@@ -9,7 +9,10 @@ stages:
       registry: docker.atriarch.systems
     env:
       PLUGIN_MTU: "1400"
-timeout: 5
+timeout: 15
+branch:
+  include:
+  - shadowlands
 notification:
   recipients:
   - recipient: dan@mail.atriarch.systems
