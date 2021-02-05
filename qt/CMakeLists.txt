@@ -16,11 +16,12 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # Resource files
-FILE(COPY ../Welcome.png DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
-FILE(COPY ../Welcome.html DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
+FILE(COPY ../qt/Welcome.png DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
+FILE(COPY ../qt/Welcome.html DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
+FILE(COPY ../qt/Error.html DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 
 # gui executeable
 include(../source_files/cmake_gui.txt)
 add_executable(SimulationCraft ${source_files})
-target_include_directories(SimulationCraft PUBLIC ../engine/ ../)
+target_include_directories(SimulationCraft PUBLIC ../engine/)
 target_link_libraries(SimulationCraft engine Qt5::Core Qt5::Gui Qt5::Widgets Qt5::WebEngine Qt5::WebEngineWidgets)

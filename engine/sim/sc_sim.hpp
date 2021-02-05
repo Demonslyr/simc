@@ -170,6 +170,7 @@ struct sim_t : private sc_thread_t
   bool pvp_crit; // Sets critical strike damage to 150% instead of 200%
   bool feast_as_dps = true;
   bool auto_attacks_always_land; /// Allow Auto Attacks (white attacks) to always hit the enemy
+  bool log_spell_id; // Add spell data ids to log/debug output where available. (actions, buffs)
 
   // Actor tracking
   int active_enemies;
@@ -347,8 +348,9 @@ struct sim_t : private sc_thread_t
     double combat_meditation_extend_chance = 1.0;
     /// Number of nearby allies & enemies for the pointed courage soulbind
     unsigned pointed_courage_nearby = 5;
-    /// Number of nearby allies when you proc lead by example
-    unsigned lead_by_example_nearby = 2;
+    /// Number of nearby allies when you proc lead by example,
+    /// the default value of -1 adjusts to 2 for ranged position and 4 for front/back position
+    int lead_by_example_nearby = -1;
     /// Number of Stone Legionnaires in party (Stone Legion Heraldry trinket)
     unsigned stone_legionnaires_in_party = 0;
     /// Number of Crimson Choir in party (Cabalist's Effigy trinket)
@@ -368,6 +370,8 @@ struct sim_t : private sc_thread_t
     // strings. Anything else will result in the item's bonus IDs being
     // used to determine which version the player is currently using.
     std::string unbound_changeling_stat_type = "default";
+    /// Chance player is getting overhealed by Gluttonous Spike proc.
+    double gluttonous_spike_overheal_chance = 1.0;
 
     /// Anima Field Emitter buff duration distribution, defaults to full duration.
     double anima_field_emitter_mean = std::numeric_limits<double>::max(),
@@ -375,6 +379,13 @@ struct sim_t : private sc_thread_t
 
     /// Retarget Shadowgrasp Totem if the use_item target demises after this many seconds
     timespan_t retarget_shadowgrasp_totem = 0_s;
+    /// Disables the execute effect of Inscrutable Quantum Device since it is avoidable in game
+    bool disable_iqd_execute = false;
+    /// Sets the chance for the Inscrutable Quantum Device to give no stat buff outside Bloodlust
+    double iqd_stat_fail_chance = 0.0;
+    /// Sets chance that the actor gets the killing blow when a target demises for Thrill Seeker stacks
+    /// The default value of -1.0 adjusts to 1/20 for most sims, and 1/4 for DungeonSlice sims
+    double thrill_seeker_killing_blow_chance = -1.0;
   } shadowlands_opts;
 
   // Auras and De-Buffs
@@ -448,7 +459,7 @@ struct sim_t : private sc_thread_t
 
   int allow_potions;
   int allow_food;
-  int allow_flasks;
+  bool allow_flasks;
   int allow_augmentations;
   int solo_raid;
   bool maximize_reporting;
@@ -599,7 +610,7 @@ struct sim_t : private sc_thread_t
   void      interrupt();
   void      add_relative( sim_t* cousin );
   void      remove_relative( sim_t* cousin );
-  sim_progress_t progress(std::string* phase = nullptr, int index = -1 );
+  sim_progress_t progress( std::string* detailed = nullptr, int index = -1 );
   double    progress( std::string& phase, std::string* detailed = nullptr, int index = -1 );
   void      detailed_progress( std::string*, int current_iterations, int total_iterations );
   void      datacollection_begin();

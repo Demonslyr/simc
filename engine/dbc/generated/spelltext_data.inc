@@ -1,5 +1,5 @@
-// Spell text, wow build 9.0.2.36949
-static const std::array<spelltext_data_t, 15095> __spelltext_data { {
+// Spell text, wow build 9.0.2.37176
+static const std::array<spelltext_data_t, 15096> __spelltext_data { {
   {     17, "Shields an ally for $d, absorbing $<shield> damage.  You cannot shield the target again for $6788d.", "Absorbs $w1 damage.", 0 },
   {     53, "Stab the target, causing ${$s2*$<mult>} Physical damage. Damage increased by $s4% when you are behind your target$?s319949[, and critical strikes apply Find Weakness for $319949s1 sec][].\r\n\r\n|cFFFFFFFFAwards $s3 combo $lpoint:points;.|r", 0, 0 },
   {     56, "Stuns target for $d.", "Stunned.", 0 },
@@ -1454,7 +1454,7 @@ static const std::array<spelltext_data_t, 15095> __spelltext_data { {
   {  44300, "Increases the damage dealt by your Crusader Strike ability by $s1%.", 0, 0 },
   {  44301, "Reduces the global cooldown triggered by Blink by ${$m1/-1000}.1 sec.", 0, 0 },
   {  44383, "Permanently enchant a shield to increase armor by $ec1. Cannot be applied to items higher than level $ecix", 0, 0 },
-  {  44425, "Launches bolts of arcane energy at the enemy target, causing $s1 Arcane damage. \r\n\r\nFor each Arcane Charge, deals $36032s2% additional damage$?a321526[, grants you $321526s1% of your maximum mana,][]$?a231564[ and hits $36032s3 additional nearby $Ltarget:targets; for $s2% of its damage][].\r\n\r\n|cFFFFFFFFConsumes all Arcane Charges.|r", 0, 0 },
+  {  44425, "Launches bolts of arcane energy at the enemy target, causing $s1 Arcane damage. \r\n\r\nFor each Arcane Charge, deals $36032s2% additional damage$?a321526[, grants you ${$321526s1/100}.1% of your maximum mana,][]$?a231564[ and hits $36032s3 additional nearby $Ltarget:targets; for $s2% of its damage][].\r\n\r\n|cFFFFFFFFConsumes all Arcane Charges.|r", 0, 0 },
   {  44457, "The target becomes a Living Bomb, taking $217694o1 Fire damage over $217694d, and then exploding to deal an additional $44461s2 Fire damage to the target and reduced damage to all other enemies within $44461A2 yards.\r\n\r\nOther enemies hit by this explosion also become a Living Bomb, but this effect cannot spread further.", "Causes $w1 Fire damage every $t1 sec. After $d, the target explodes, causing $w2 Fire damage to the target and all other enemies within $44461A2 yards$?$w3>0[, and spreading Living Bomb][].", 0 },
   {  44461, "$@spelldesc44457", 0, 0 },
   {  44484, "Permanently enchant gloves to increase haste by $ec1. Cannot be applied to items higher than level $ecix", 0, 0 },
@@ -5735,7 +5735,7 @@ static const std::array<spelltext_data_t, 15095> __spelltext_data { {
   { 186257, "Increases your movement speed by $s1% for $d, and then by $186258s1% for another $186258d.", "Movement speed increased by $w1%.", 0 },
   { 186258, "Increases your movement speed by $s1% for $d.", "Movement speed increased by $w1%.", 0 },
   { 186260, "$@spelldesc190925", "Stunned.", 0 },
-  { 186263, "Wraps an ally in shadows which heal for $s1, but at a price.\r\n\r\nThe ally will take ${$s1/20} damage every $187464t1 sec, until they have taken ${$s1/2} total damage from all sources, or leave combat. $?s342991[$@spelldesc342991][]", 0, 0 },
+  { 186263, "Wraps an ally in shadows which heal for $s1, but at a price.\r\n\r\nThe ally will take ${$s1/20} damage every $187464t1 sec, until they have taken ${$s1/2} total damage from all sources, or leave combat.", 0, 0 },
   { 186265, "Deflects all attacks and reduces all damage you take by $s4% for $d, but you cannot attack.$?s83495[  Additionally, you have a $83495s1% chance to reflect spells back at the attacker.][]", "Deflecting all attacks.\r\nDamage taken reduced by $w4%.", 0 },
   { 186270, "A vicious slash dealing $s1 Physical damage.", 0, 0 },
   { 186289, "Increases the range of your $?s259387[Mongoose Bite][Raptor Strike] to $265189r yds for $d.", "The range of $?s259387[Mongoose Bite][Raptor Strike] is increased to $265189r yds.", 0 },
@@ -5828,7 +5828,7 @@ static const std::array<spelltext_data_t, 15095> __spelltext_data { {
   { 188019, "Chug it.", 0, 0 },
   { 188020, "Transform into a tree.  You and any players that rest in your shade become Well-Rested, increasing all stats by $222116s1%.", "Transformed into a tree.  Players that rest in your shade will become Well-Rested.", 0 },
   { 188021, "Falling a great distance will cause you to transform into an avalanche. When you land, deal $188416m1 damage to all enemies within $188416A1 yards.", "Falling a great distance will cause you to transform into an avalanche.", 0 },
-  { 188023, "Enter the spirit realm, giving the imbiber invisibility for $d. Ineffective above level $maxcast.", "Invisible.", 0 },
+  { 188023, "Enter the spirit realm, giving the imbiber invisibility for $d. Ineffective above level $188024maxcast.", "Invisible.", 0 },
   { 188024, "Increases movement speed by $s1% and allows the imbiber to hover.  Lasts $d. Ineffective above level $maxcast.", "Grants hovering and a movement speed increase.", 0 },
   { 188026, "When you heal or deal damage you have a chance to increase your Strength, Agility, or Intellect by $s1 for $60229d.  Your highest stat is always chosen.", 0, 0 },
   { 188027, "Grants your attacks a chance to unleash a bolt of energy at your target.\r\n\r\nStaying away from enemies for the entire duration of the effect will extend the effect by an additional 5 seconds.", "Your attacks have a chance to unleash a bolt of energy at your target.", 0 },
@@ -6130,6 +6130,7 @@ static const std::array<spelltext_data_t, 15095> __spelltext_data { {
   { 193468, "Range of all your ranged abilities is increased by ${$s1}.1% and damage of all abilities increased by ${$s2}.1%.", "Range increased by $w1%.\r\nFocus spending abilites deal $s2% increased damage.", "Mastery" },
   { 193470, "$@spelldesc193371", 0, 0 },
   { 193473, "Assaults the target's mind with Shadow energy, causing $o1 Shadow damage over $d and slowing their movement speed by $s2%.", "$?$w2=0[Taking][Movement speed slowed and taking] Shadow damage every $t1 sec.", 0 },
+  { 193486, "Gain a Rune.", 0, 0 },
   { 193530, "Grants you and your pet $s2 Focus per sec and $s1% increased critical strike chance for $d.", "Gaining $s2 Focus per sec.\r\nCritical Strike chance increased by $s1%.", 0 },
   { 193531, "You may have a maximum of $s3 combo points, your finishing moves consume up to $s3 combo points, and your finishing moves deal $s4% increased damage.", 0, 0 },
   { 193532, "Activating Bestial Wrath grants $s1 charges of Barbed Shot.", 0, 0 },
@@ -13215,7 +13216,7 @@ static const std::array<spelltext_data_t, 15095> __spelltext_data { {
   { 321510, "$@spelldesc320662", "Haste increased by $w1%.", 0 },
   { 321519, "$@spelldesc320660", "Suffering $w1 Nature damage every $t1 sec.", 0 },
   { 321524, "$@spelldesc320660", 0, 0 },
-  { 321526, "Arcane Barrage grants you $s1% of your maximum mana per Arcane Charge spent.", 0, "Rank 3" },
+  { 321526, "Arcane Barrage grants you ${$S1/100}% of your maximum mana per Arcane Charge spent.", 0, "Rank 3" },
   { 321527, "$@spelldesc320687", "Movement speed increased by $m1%.", 0 },
   { 321530, "Command your pet to tear into your target, causing your target to bleed for $<damage> over $321538d and increase all damage taken from your pet by $321538s2% for $321538d.", 0, 0 },
   { 321535, "Permanently attaches a scope to a ranged weapon, causing it to occasionally increase Haste by $329666s1 for $329666d when dealing damage with ranged attacks.\r\n\r\nAttaching this device to a ranged weapon causes it to become soulbound.", 0, 0 },
@@ -13320,6 +13321,7 @@ static const std::array<spelltext_data_t, 15095> __spelltext_data { {
   { 323701, "$@spelldesc323673", 0, 0 },
   { 323705, "$@spelldesc323673", 0, 0 },
   { 323706, "$@spelldesc323673", 0, 0 },
+  { 323707, "$@spelldesc323673", 0, 0 },
   { 323710, "$@spelldesc315443", "Recently pulled  by Abomination Limb and can't be pulled again.", "Necrolord" },
   { 323755, "Permanently enchants a cloak to increase your Stamina by $ec1.", 0, 0 },
   { 323760, "Permanently enchants your chest to increase your Strength or Agility by $ec1 and give your auto-attacks and auto-shots a chance to deal additional shadow damage.", 0, 0 },
@@ -13655,6 +13657,7 @@ static const std::array<spelltext_data_t, 15095> __spelltext_data { {
   { 329492, "$@spelldesc329490", "Your Slumberwood Band has no dream dust remaining.", 0 },
   { 329536, "Your damaging abilities have a very low chance to manifest a drust behemoth, smashing your target and dealing $s2 Physical damage to all nearby enemies.", 0, 0 },
   { 329540, "$@spelldesc329536", 0, 0 },
+  { 329548, "$@spelldesc329536", 0, 0 },
   { 329554, "Call forth and defeat a demon from the Theater of Pain to release an Empowered Demon Soul, increasing your damage done by $347765s1% and reducing all damage taken by $347765s4% for $347765d.\r\n \r\nThe demon will escape to the Nether after $d. Throw Glaive deals considerably more damage to the demon and Fleshcraft treats it as a powerful enemy.", "Battling a demon from the Theater of Pain...", "Necrolord" },
   { 329666, "Increases Haste by $s1.", "Haste increased by $w1.", 0 },
   { 329720, " ", 0, "Night Fae" },
@@ -13700,15 +13703,11 @@ static const std::array<spelltext_data_t, 15095> __spelltext_data { {
   { 330730, 0, "Critical Strike increased by $w1.", 0 },
   { 330733, "Your abilities have a chance to grant you $330747s1 Haste for $330131d.", 0, 0 },
   { 330734, "Your abilities have a chance to grant you $330747s1 Mastery for $330131d.", 0, 0 },
-  { 330739, "$@spelldesc330080", 0, 0 },
-  { 330740, "$@spelldesc330733", 0, 0 },
-  { 330741, "$@spelldesc330734", 0, 0 },
   { 330744, "Destabilizes gravity around a target location, hindering nearby enemies' movement for $339672d, launching them in random directions, or throwing them up in the air.\r\n\r\n... Unless it backfires.", 0, 0 },
   { 330749, "$@spelldesc329777", "Healing for $s1% of your maximum health every $t1 sec.", 0 },
   { 330752, "$@spelldesc329776", "Immune to Curse, Disease, Poison, and Bleed effects.", 0 },
   { 330764, 0, "Critical Strike, Haste, and Mastery increased by $w1.", 0 },
   { 330765, "Your abilities have a chance to grant you $330747s2 Critical Strike, Haste, and Mastery for $330131d.", 0, 0 },
-  { 330767, "$@spelldesc330765", 0, 0 },
   { 330859, "$@spelldesc329781", "Healing for $w1 every $t sec.", 0 },
   { 330898, "$@spelldesc113656", "$w3 damage every $t3 sec.", 0 },
   { 330901, "Spin while kicking in the air, dealing $?s137025[${4*$107270s1*$<CAP>/$AP}][${4*$107270s1}] Physical damage over $d to up to $s1 enemies within $107270A1 yds.$?c3[\r\n\r\nSpinning Crane Kick's damage is increased by $220358s1% for each unique target you've struck in the last $220358d with Tiger Palm, Blackout Kick, or Rising Sun Kick.][]", "Attacking nearby enemies for Physical damage every $101546t1 sec.", 0 },
@@ -13890,7 +13889,7 @@ static const std::array<spelltext_data_t, 15095> __spelltext_data { {
   { 334448, "When Obtained: Reduces the effect of the Endmire's Weakened Soul by $s1% on each application. ", "The effect of the Endmire's Weakened Soul effect is reduced by $s1%.", 0 },
   { 334452, "Interupt the casting of enemies within $a2 yds. Only usable outdoors in the Shadowlands.", 0, 0 },
   { 334453, "Repair target item to full durability. ", 0, 0 },
-  { 334456, "Increase the stamina of an item worn on the chest, legs, hands or feet by $ec for 2 hrs. Warning: Components are hot!\r\n\r\nCannot be applied to items higher than level $ecix. ", 0, 0 },
+  { 334456, "Increase the stamina of an item worn on the chest by $ec for 2 hrs. Warning: Components are hot!\r\n\r\nCannot be applied to items higher than level $ecix. ", 0, 0 },
   { 334458, "Throw onto an enemy dealing ${$s1*$s2} damage over $d. Only usable outdoors in the Shadowlands.", "Burning for $w1 every $t sec.", 0 },
   { 334501, "Death Strike refunds $s1% of Runic Power spent if it heals you for more than $s2% of your maximum health.", 0, 0 },
   { 334511, "$@spelldesc334512", "The heart beats, providing life to the Slimy Morsels.", 0 },
@@ -13935,6 +13934,7 @@ static const std::array<spelltext_data_t, 15095> __spelltext_data { {
   { 334886, "Deal $s1 Shadow damage to a target, but incur a stack of Lingering Despair each time you do. Lingering Despair deals $334887s1 Shadow damage every $334887t sec while you are holding the Mirror of Despair. Only usable outdoors in the Shadowlands.", 0, 0 },
   { 334887, "$@spelldesc334886", "Taking $w1 Shadow damage every $t sec while you continue to hold the Mirror of Despair. Destroy to remove the Lingering Despair.", 0 },
   { 334888, "Dark Transformation also increases the attack speed and damage of you and your Monstrosity by $334896s1%.", 0, 0 },
+  { 334895, 0, "Damage increased by $m2%, and attack speed increased by $m3%.", 0 },
   { 334896, "$@spelldesc334888", "Damage and attack speed increased by $m3%.", 0 },
   { 334898, "Death Strike and Death Coil deal $s2% increased damage and reduce the remaining cooldown of $?s152280[Defile]?a315442[Death's Due][Death and Decay] by ${$s1/10}.1 sec.", 0, 0 },
   { 334934, "$@spelldesc228920", 0, 0 },
@@ -14033,6 +14033,7 @@ static const std::array<spelltext_data_t, 15095> __spelltext_data { {
   { 336165, "Shadow Word: Death consumes $s1 sec of Shadow Word: Pain and Vampiric Touch, instantly dealing that damage to the target and generating up to ${2*$336167s2/10} Insanity.", 0, 0 },
   { 336167, "$@spelldesc336165", 0, 0 },
   { 336182, "Cause the target to take up to ${$s1*31.17188} Shadow damage over $d. The damage of Growing Despair increases over the duration. ", "Taking up to ${$s1*31.17188} Shadow damage.", 0 },
+  { 336183, "$@spelldesc336182", 0, 0 },
   { 336184, "You have a chance to obtain an assortment of flavorful herbs and beverages when you kill an enemy that yields experience or honor.", 0, 0 },
   { 336191, "$?s202168[Impending Victory][Victory Rush] heals you for |cFFFFFFFF$<val>%|r of the damage it dealt over $336642d.", 0, 0 },
   { 336214, "Mind Flay and Mind Sear have a chance to spawn a Void Tendril or Void Lasher that channels at your target for $336216d, generating $s1 insanity every $344754t1 sec.", 0, 0 },
@@ -15097,11 +15098,15 @@ static const std::array<spelltext_data_t, 15095> __spelltext_data { {
   { 348439, "Restores ${$m1/5*$d} health over $d.  Must remain seated while eating.", "Restores ${$m1/5} health per second.", 0 },
 } };
 
-// spelltext hotfix entries, wow build 9.0.2.36949
-static constexpr std::array<hotfix::client_hotfix_entry_t, 0> __spelltext_hotfix_data { {
+// spelltext hotfix entries, wow build 9.0.2.37176
+static constexpr std::array<hotfix::client_hotfix_entry_t, 4> __spelltext_hotfix_data { {
+  {   44425,  0, "Launches bolts of arcane energy at the enemy target, causing $s1 Arcane damage. \r\n\r\nFor each Arcane Charge, deals $36032s2% additional damage$?a321526[, grants you $321526s1% of your maximum mana,][]$?a231564[ and hits $36032s3 additional nearby $Ltarget:targets; for $s2% of its damage][].\r\n\r\n|cFFFFFFFFConsumes all Arcane Charges.|r", "Launches bolts of arcane energy at the enemy target, causing $s1 Arcane damage. \r\n\r\nFor each Arcane Charge, deals $36032s2% additional damage$?a321526[, grants you ${$321526s1/100}.1% of your maximum mana,][]$?a231564[ and hits $36032s3 additional nearby $Ltarget:targets; for $s2% of its damage][].\r\n\r\n|cFFFFFFFFConsumes all Arcane Charges.|r" },
+  {  186263,  0, "Wraps an ally in shadows which heal for $s1, but at a price.\r\n\r\nThe ally will take ${$s1/20} damage every $187464t1 sec, until they have taken ${$s1/2} total damage from all sources, or leave combat. $?s342991[$@spelldesc342991][]", "Wraps an ally in shadows which heal for $s1, but at a price.\r\n\r\nThe ally will take ${$s1/20} damage every $187464t1 sec, until they have taken ${$s1/2} total damage from all sources, or leave combat." },
+  {  321526,  0, "Arcane Barrage grants you $s1% of your maximum mana per Arcane Charge spent.", "Arcane Barrage grants you ${$S1/100}% of your maximum mana per Arcane Charge spent." },
+  {  334456,  0, "Increase the stamina of an item worn on the chest, legs, hands or feet by $ec for 2 hrs. Warning: Components are hot!\r\n\r\nCannot be applied to items higher than level $ecix. ", "Increase the stamina of an item worn on the chest by $ec for 2 hrs. Warning: Components are hot!\r\n\r\nCannot be applied to items higher than level $ecix. " },
 } };
 
-// Spell description variables, wow build 9.0.2.36949
+// Spell description variables, wow build 9.0.2.37176
 static const std::array<spelldesc_vars_data_t, 295> __spelldesc_vars_data { {
   {      17, "$rapture=$?a47536[${(1+$47536s1/100)}][${1}]\r\n$shadow=$?a137033[${1.00}][${1}]\r\n$shield=${$SP*1.65*(1+$@versadmg)*$<rapture>*$<shadow>}" },
   {      53, "$mult=${($max(0,$min($pl-10,10))*11+260)/370}" },
@@ -15400,7 +15405,7 @@ static const std::array<spelldesc_vars_data_t, 295> __spelldesc_vars_data { {
   {  345549, "$phylacteryhealth=$s2*15" },
 } };
 
-// spelldesc_vars hotfix entries, wow build 9.0.2.36949
+// spelldesc_vars hotfix entries, wow build 9.0.2.37176
 static constexpr std::array<hotfix::client_hotfix_entry_t, 0> __spelldesc_vars_hotfix_data { {
 } };
 

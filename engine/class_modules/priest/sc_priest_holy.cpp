@@ -1,6 +1,7 @@
 // ==========================================================================
-// Dedmonwakeen's Raid DPS/TPS Simulator.
-// Send questions to natehieter@gmail.com
+// Holy Priest Sim File
+// Contact: https://github.com/orgs/simulationcraft/teams/priest/members
+// Wiki: https://github.com/simulationcraft/simc/wiki/Priests
 // ==========================================================================
 
 #include "sc_priest.hpp"
@@ -172,43 +173,14 @@ void priest_t::init_spells_holy()
   // Talents
   // T15
   talents.enlightenment    = find_talent_spell( "Enlightenment" );
-  talents.trail_of_light   = find_talent_spell( "Trail of Light" );
-  talents.enduring_renewal = find_talent_spell( "Enduring Renewal" );
-  // T25
-  talents.angels_mercy    = find_talent_spell( "Angel's Mercy" );
-  talents.body_and_soul   = find_talent_spell( "Body and Soul" );
-  talents.angelic_feather = find_talent_spell( "Angelic Feather" );
-  // T30
-  talents.cosmic_ripple  = find_talent_spell( "Cosmic Ripple" );
-  talents.guardian_angel = find_talent_spell( "Guardian Angel" );
-  talents.after_life     = find_talent_spell( "After Life" );
-  // T35
-  talents.psychic_voice = find_talent_spell( "Psychic Voice" );
-  talents.censure       = find_talent_spell( "Censure" );
-  talents.shining_force = find_talent_spell( "Shining Force" );
-  // T40
-  talents.surge_of_light = find_talent_spell( "Surge of Light" );
-  talents.binding_heal   = find_talent_spell( "Binding Heal" );
-  talents.prayer_circle  = find_talent_spell( "Prayer Circle" );
-  // T45
-  talents.benediction = find_talent_spell( "Benediction" );
-  talents.divine_star = find_talent_spell( "Divine Star" );
-  talents.halo        = find_talent_spell( "Halo" );
   // T50
   talents.light_of_the_naaru  = find_talent_spell( "Light of the Naaru" );
   talents.apotheosis          = find_talent_spell( "Apotheosis" );
-  talents.holy_word_salvation = find_talent_spell( "Holy Word: Salvation" );
 
   // General Spells
-  specs.serendipity        = find_specialization_spell( "Serendipity" );
-  specs.rapid_renewal      = find_specialization_spell( "Rapid Renewal" );
-  specs.divine_providence  = find_specialization_spell( "Divine Providence" );
-  specs.focused_will       = find_specialization_spell( "Focused Will" );
   specs.holy_words         = find_specialization_spell( "Holy Words" );
   specs.holy_word_serenity = find_specialization_spell( "Holy Word: Serenity" );
 
-  // Spec Core
-  specs.holy_priest = find_specialization_spell( "Holy Priest" );
 }
 
 action_t* priest_t::create_action_holy( util::string_view name, util::string_view options_str )
@@ -276,72 +248,6 @@ void priest_t::adjust_holy_word_serenity_cooldown()
 
   auto adjustment = -timespan_t::from_seconds( specs.holy_word_serenity->effectN( 2 ).base_value() );
   cooldowns.holy_word_serenity->adjust( adjustment );
-}
-
-/** Holy Damage Combat Action Priority List */
-void priest_t::generate_apl_holy_d()
-{
-  action_priority_list_t* default_list = get_action_priority_list( "default" );
-  action_priority_list_t* precombat    = get_action_priority_list( "precombat" );
-
-  // Precombat actions
-  precombat->add_action( "potion" );
-  precombat->add_action( this, "Smite" );
-
-  // On-Use Items
-  default_list->add_action( "use_items" );
-
-  // Professions
-  for ( const auto& profession_action : get_profession_actions() )
-  {
-    default_list->add_action( profession_action );
-  }
-
-  // Potions
-  default_list->add_action(
-      "potion,if=buff.bloodlust.react|(raid_event.adds.up&(raid_event.adds.remains>20|raid_event.adds.duration<20))|"
-      "target.time_to_die<=30" );
-
-  // Default APL
-  default_list->add_action(
-      this, "Holy Fire",
-      "if=dot.holy_fire.ticking&(dot.holy_fire.remains<=gcd|dot.holy_fire.stack<2)&spell_targets.holy_nova<7" );
-  default_list->add_action( this, "Holy Word: Chastise", "if=spell_targets.holy_nova<5" );
-  default_list->add_action(
-      this, "Holy Fire",
-      "if=dot.holy_fire.ticking&(dot.holy_fire.refreshable|dot.holy_fire.stack<2)&spell_targets.holy_nova<7" );
-  default_list->add_action(
-      "berserking,if=raid_event.adds.in>30|raid_event.adds.remains>8|raid_event.adds.duration<8" );
-  default_list->add_action( "fireblood,if=raid_event.adds.in>20|raid_event.adds.remains>6|raid_event.adds.duration<6" );
-  default_list->add_action(
-      "ancestral_call,if=raid_event.adds.in>20|raid_event.adds.remains>10|raid_event.adds.duration<10" );
-  default_list->add_talent(
-      this, "Divine Star",
-      "if=(raid_event.adds.in>5|raid_event.adds.remains>2|raid_event.adds.duration<2)&spell_targets.divine_star>1" );
-  default_list->add_talent(
-      this, "Halo",
-      "if=(raid_event.adds.in>14|raid_event.adds.remains>2|raid_event.adds.duration<2)&spell_targets.halo>0" );
-  default_list->add_action(
-      "lights_judgment,if=raid_event.adds.in>50|raid_event.adds.remains>4|raid_event.adds.duration<4" );
-  default_list->add_action(
-      "arcane_pulse,if=(raid_event.adds.in>40|raid_event.adds.remains>2|raid_event.adds.duration<2)&spell_targets."
-      "arcane_pulse>2" );
-  default_list->add_action( this, "Holy Fire", "if=!dot.holy_fire.ticking&spell_targets.holy_nova<7" );
-  default_list->add_action( this, "Holy Nova", "if=spell_targets.holy_nova>3" );
-  default_list->add_talent(
-      this, "Apotheosis", "if=active_enemies<5&(raid_event.adds.in>15|raid_event.adds.in>raid_event.adds.cooldown-5)" );
-  default_list->add_action( this, "Smite" );
-  default_list->add_action( this, "Holy Fire" );
-  default_list->add_talent(
-      this, "Divine Star",
-      "if=(raid_event.adds.in>5|raid_event.adds.remains>2|raid_event.adds.duration<2)&spell_targets.divine_star>0" );
-  default_list->add_action( this, "Holy Nova", "if=raid_event.movement.remains>gcd*0.3&spell_targets.holy_nova>0" );
-}
-
-/** Holy Heal Combat Action Priority List */
-void priest_t::generate_apl_holy_h()
-{
-  create_apl_default();
 }
 
 }  // namespace priestspace

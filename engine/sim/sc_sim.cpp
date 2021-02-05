@@ -1148,12 +1148,6 @@ std::vector<std::string> get_api_key_locations()
   return key_locations;
 }
 
-/// Check if api key is valid
-bool validate_api_key( const std::string& key )
-{
-  // no better check for now than to measure its length.
-  return key.size() == 65;
-}
 
 /**
  * @brief Try to get user-supplied api key
@@ -1179,7 +1173,7 @@ std::string get_api_key()
 
     std::string line;
     std::getline( myfile,line );
-    if ( validate_api_key( line ) )
+    if ( bcp_api::validate_api_key( line ) )
     {
       return line;
     }
@@ -1250,7 +1244,8 @@ struct compare_dps
 {
   bool operator()( player_t* l, player_t* r ) const
   {
-    double lv = l->collected_data.dps.mean(), rv = r->collected_data.dps.mean();
+    double lv = l->collected_data.dps.mean();
+    double rv = r->collected_data.dps.mean();
     if ( lv == rv )
     {
       return l->actor_index < r->actor_index;
@@ -1266,7 +1261,8 @@ struct compare_priority_dps
 {
   bool operator()( player_t* l, player_t* r ) const
   {
-    double lv = l->collected_data.prioritydps.mean(), rv = r->collected_data.prioritydps.mean();
+    double lv = l->collected_data.prioritydps.mean();
+    double rv = r->collected_data.prioritydps.mean();
     if ( lv == rv )
     {
       return l->actor_index < r->actor_index;
@@ -1305,7 +1301,8 @@ struct compare_hps
 {
   bool operator()( player_t* l, player_t* r ) const
   {
-    double lv = l->collected_data.hps.mean(), rv = r->collected_data.hps.mean();
+    double lv = l->collected_data.hps.mean();
+    double rv = r->collected_data.hps.mean();
     if ( lv == rv )
     {
       return l->actor_index < r->actor_index;
@@ -1321,8 +1318,8 @@ struct compare_hps_plus_aps
 {
   bool operator()( player_t* l, player_t* r ) const
   {
-    double lv = l->collected_data.hps.mean() + l->collected_data.aps.mean(),
-           rv = r->collected_data.hps.mean() + r->collected_data.aps.mean();
+    double lv = l->collected_data.hps.mean() + l->collected_data.aps.mean();
+    double rv = r->collected_data.hps.mean() + r->collected_data.aps.mean();
     if ( lv == rv )
     {
       return l->actor_index < r->actor_index;
@@ -1338,7 +1335,8 @@ struct compare_dtps
 {
   bool operator()( player_t* l, player_t* r ) const
   {
-    double lv = l->collected_data.dtps.mean(), rv = r->collected_data.dtps.mean();
+    double lv = l->collected_data.dtps.mean();
+    double rv = r->collected_data.dtps.mean();
     if ( lv == rv )
     {
       return l->actor_index < r->actor_index;
@@ -1354,8 +1352,8 @@ struct compare_tmi
 {
   bool operator()( player_t* l, player_t* r ) const
   {
-    double lv = l->collected_data.theck_meloree_index.mean(),
-           rv = r->collected_data.theck_meloree_index.mean();
+    double lv = l->collected_data.theck_meloree_index.mean();
+    double rv = r->collected_data.theck_meloree_index.mean();
     if ( lv == rv )
     {
       return l->actor_index < r->actor_index;
@@ -1486,6 +1484,7 @@ sim_t::sim_t() :
   disable_set_bonuses( false ), disable_2_set( 1 ), disable_4_set( 1 ), enable_2_set( 1 ), enable_4_set( 1 ),
   pvp_crit( false ),
   auto_attacks_always_land( false ),
+  log_spell_id(),
   active_enemies( 0 ), active_allies( 0 ),
   _rng(), seed( 0 ), deterministic( 0 ), strict_work_queue( 0 ),
   average_range( true ), average_gauss( false ),
@@ -1837,7 +1836,7 @@ void sim_t::combat_begin()
 
   // Debug seed needs to be done _after_ sim reset, because deterministic=1 will reseed in
   // sim_t::reset()
-  if ( debug_seed.size() > 0 )
+  if ( !debug_seed.empty() )
   {
     enable_debug_seed();
   }
@@ -1951,7 +1950,7 @@ void sim_t::combat_end()
 
   analyze_error();
 
-  if ( debug_seed.size() > 0 )
+  if ( !debug_seed.empty() )
   {
     disable_debug_seed();
   }
@@ -2260,21 +2259,18 @@ void sim_t::init_fight_style()
   }
   else if ( util::str_compare_ci( fight_style, "LightMovement" ) )
   {
-    auto first_time = static_cast<unsigned>( max_time.total_seconds() * 0.1 );
-    auto last_time = static_cast<unsigned>( max_time.total_seconds() * 0.8 );
-
-    raid_events_str += fmt::format( "/movement,players_only=1,cooldown=85,distance=50,first={},last={}",
-                                   first_time, last_time );
+    raid_events_str += "/movement,players_only=1,cooldown=45,cooldown_stddev=15,distance=25,distance_min=20,distance_max=30,first=15";
   }
   else if ( util::str_compare_ci( fight_style, "HeavyMovement" ) )
   {
-    raid_events_str += "/movement,players_only=1,first=10,cooldown=10,distance=25";
+    raid_events_str += "/movement,players_only=1,cooldown=20,cooldown_stddev=15,distance=25,distance_min=20,distance_max=30,first=15";
+    raid_events_str += "/movement,players_only=1,cooldown=45,cooldown_stddev=15,distance=45,distance_min=40,distance_max=50,first=30";
   }
   else if ( util::str_compare_ci( fight_style, "HecticAddCleave" ) )
   {
     // Phase 1 - Adds and move into position to fight adds
-    auto first_and_duration = std::max( static_cast<unsigned>( max_time.total_seconds() * 0.05 ), 1u );
-    auto cooldown = std::max( static_cast<unsigned>( max_time.total_seconds() * 0.075 ), 1u );
+    auto first_and_duration = std::max( static_cast<unsigned>( max_time.total_seconds() * 0.05 ), 1U );
+    auto cooldown = std::max( static_cast<unsigned>( max_time.total_seconds() * 0.075 ), 1U );
     auto last = static_cast<unsigned>( max_time.total_seconds() * 0.75 );
 
     raid_events_str += fmt::format( "/adds,count=5,first={},cooldown={},duration={},last={}",
@@ -2285,7 +2281,7 @@ void sim_t::init_fight_style()
 
     // Phase2 - Move out of stuff
     auto first2 = static_cast<unsigned>( max_time.total_seconds() * 0.03 );
-    auto cooldown2 = std::max( static_cast<unsigned>( max_time.total_seconds() * 0.04 ), 1u );
+    auto cooldown2 = std::max( static_cast<unsigned>( max_time.total_seconds() * 0.04 ), 1U );
 
     raid_events_str += fmt::format( "/movement,players_only=1,distance=8,first={},cooldown={}",
                                     first2, cooldown2 );
@@ -2679,7 +2675,8 @@ void sim_t::init()
 
   {
     // Determine whether we have healers or tanks.
-    unsigned int healers = 0, tanks = 0;
+    unsigned int healers = 0;
+    unsigned int tanks = 0;
     for ( size_t i = 0; i < player_no_pet_list.size(); ++i )
     {
       player_t& p = *player_no_pet_list[ i ];
@@ -2793,7 +2790,7 @@ void sim_t::analyze()
        scaling -> calculate_scale_factors == 0 &&
        plot -> dps_plot_stat_str.empty() &&
        reforge_plot -> reforge_plot_stat_str.empty() &&
-       profileset_map.size() == 0 && ! profileset_enabled )
+       profileset_map.empty() && ! profileset_enabled )
   {
     std::cout << "Analyzing actor data ..." << std::endl;
   }
@@ -2970,7 +2967,7 @@ void sim_t::merge( sim_t& other_sim )
        scaling -> calculate_scale_factors == 0 &&
        plot -> dps_plot_stat_str.empty() &&
        reforge_plot -> reforge_plot_stat_str.empty() &&
-       profileset_map.size() == 0 && ! profileset_enabled )
+       profileset_map.empty() && ! profileset_enabled )
   {
     std::cout << "Merging data from thread-" << other_sim.thread_index << " ..." << std::endl;
   }
@@ -3097,7 +3094,7 @@ void sim_t::partition()
   // Filter out profileset-related options from the child sim control, since they are not going to
   // use them anyhow. This significantly speeds up child creation in situations where the input
   // profile is a very large set of profileset sims.
-  if ( profileset_map.size() > 0 )
+  if ( !profileset_map.empty() )
   {
     child_control = profileset::filter_control( control );
   }
@@ -3138,7 +3135,7 @@ void sim_t::partition()
 
   // Safe to do for now, since control is only referenced by sim_t::setup, which is called in the
   // sim_t constructor.
-  if ( profileset_map.size() > 0 )
+  if ( !profileset_map.empty() )
   {
     delete child_control;
   }
@@ -3263,7 +3260,7 @@ std::unique_ptr<expr_t> sim_t::create_expression( util::string_view name_str )
 
   if ( util::str_compare_ci( name_str, "active_enemies" ) )
   {
-    if ( target_list.size() == 1u && !has_raid_event( "adds" ) )
+    if ( target_list.size() == 1U && !has_raid_event( "adds" ) )
     {
       return expr_t::create_constant( name_str, 1.0 );
     }
@@ -3542,6 +3539,7 @@ void sim_t::create_options()
   add_option( opt_uint( "enable_4_set", enable_4_set ) );
   add_option( opt_bool( "pvp", pvp_crit ) );
   add_option( opt_bool( "auto_attacks_always_land", auto_attacks_always_land ) );
+  add_option( opt_bool( "log_spell_id", log_spell_id ) );
   add_option( opt_int( "desired_targets", desired_targets ) );
   add_option( opt_bool( "show_etmi", show_etmi ) );
   add_option( opt_float( "tmi_window_global", tmi_window_global ) );
@@ -3794,12 +3792,12 @@ void sim_t::create_options()
     shadowlands_opts.combat_meditation_extend_chance, 0.0, 1.0 ) );
   add_option( opt_uint( "shadowlands.pointed_courage_nearby",
     shadowlands_opts.pointed_courage_nearby, 0, 5 ) );
-  add_option( opt_uint( "shadowlands.lead_by_example_nearby",
+  add_option( opt_int( "shadowlands.lead_by_example_nearby",
     shadowlands_opts.lead_by_example_nearby, 0, 4 ) );
   add_option( opt_uint( "shadowlands.stone_legionnaires_in_party",
-    shadowlands_opts.stone_legionnaires_in_party, 0, 5 ) );
+    shadowlands_opts.stone_legionnaires_in_party, 0, 4 ) );
   add_option( opt_uint( "shadowlands.crimson_choir_in_party",
-    shadowlands_opts.crimson_choir_in_party, 0, 5 ) );
+    shadowlands_opts.crimson_choir_in_party, 0, 4 ) );
   add_option( opt_float( "shadowlands.judgment_of_the_arbiter_arc_chance",
     shadowlands_opts.judgment_of_the_arbiter_arc_chance, 0.0, 1.0 ) );
   add_option( opt_string( "shadowlands.volatile_solvent_type", shadowlands_opts.volatile_solvent_type ) );
@@ -3810,6 +3808,13 @@ void sim_t::create_options()
   add_option( opt_float( "shadowlands.anima_field_emitter_stddev",
     shadowlands_opts.anima_field_emitter_stddev, 0.0, std::numeric_limits<double>::max() ) );
   add_option( opt_timespan( "shadowlands.retarget_shadowgrasp_totem", shadowlands_opts.retarget_shadowgrasp_totem ) );
+  add_option( opt_bool( "shadowlands.disable_iqd_execute", shadowlands_opts.disable_iqd_execute ) );
+  add_option( opt_float( "shadowlands.gluttonous_spike_overheal_chance",
+    shadowlands_opts.gluttonous_spike_overheal_chance, 0.0, 1.0 ) );
+  add_option( opt_float( "shadowlands.iqd_stat_fail_chance",
+    shadowlands_opts.iqd_stat_fail_chance, 0.0, 1.0 ) );
+  add_option( opt_float( "shadowlands.thrill_seeker_killing_blow_chance",
+                         shadowlands_opts.thrill_seeker_killing_blow_chance, 0.0, 1.0 ) );
 }
 
 // sim_t::parse_option ======================================================
@@ -4110,7 +4115,7 @@ void sim_t::print_spell_query()
 {
   if ( ! spell_query_xml_output_file_str.empty() )
   {
-    io::cfile file( spell_query_xml_output_file_str.c_str(), "w" );
+    io::cfile file( spell_query_xml_output_file_str, "w" );
     if ( ! file )
     {
       std::cerr << "Unable to open spell query xml output file '" << spell_query_xml_output_file_str << "', using stdout instead\n";

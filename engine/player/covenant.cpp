@@ -21,8 +21,8 @@ conduit_data_t::conduit_data_t() :
   /* m_player( nullptr ), */ m_conduit( &conduit_rank_entry_t::nil() ), m_spell( spell_data_t::not_found() )
 { }
 
-conduit_data_t::conduit_data_t( const player_t* player, const conduit_rank_entry_t& entry ) :
-  /* m_player( player ), */ m_conduit( &entry ), m_spell( dbc::find_spell( player, entry.spell_id ) )
+conduit_data_t::conduit_data_t( const player_t* player, const conduit_rank_entry_t& conduit )
+  : /* m_player( player ), */ m_conduit( &conduit ), m_spell( dbc::find_spell( player, conduit.spell_id ) )
 { }
 
 bool conduit_data_t::ok() const
@@ -213,7 +213,7 @@ bool covenant_state_t::parse_soulbind( sim_t*             sim,
       }
 
       const auto& conduit_rank_entry = conduit_rank_entry_t::find( conduit_entry->id,
-          conduit_rank - 1u, m_player->dbc->ptr );
+          conduit_rank - 1U, m_player->dbc->ptr );
       if ( conduit_rank_entry.conduit_id == 0 )
       {
         sim->error( "{} unknown conduit rank {} for {} (id={})",
@@ -222,7 +222,7 @@ bool covenant_state_t::parse_soulbind( sim_t*             sim,
       }
 
       // In game ranks are zero-indexed
-      m_conduits.emplace_back( conduit_entry->id, conduit_rank - 1u );
+      m_conduits.emplace_back( conduit_entry->id, conduit_rank - 1U );
     }
     // Soulbind handling
     else
@@ -363,8 +363,8 @@ std::string covenant_state_t::soulbind_option_str() const
     for ( auto it = m_soulbind_str.begin(); it != m_soulbind_str.end(); it++ )
     {
       auto str = *it;
-      str.erase( 0, str.find_first_not_of( "/" ) );
-      str.erase( str.find_last_not_of( "/" ) + 1 );
+      str.erase( 0, str.find_first_not_of( '/' ) );
+      str.erase( str.find_last_not_of( '/' ) + 1 );
 
       if ( !str.empty() )
         output += fmt::format( "{}={}", it == m_soulbind_str.begin() ? "soulbind" : "\nsoulbind+", str );
@@ -497,7 +497,7 @@ void covenant_state_t::register_options( player_t* player )
 unsigned covenant_state_t::get_covenant_ability_spell_id( bool generic ) const
 {
   if ( !enabled() )
-    return 0u;
+    return 0U;
 
   for ( const auto& e : covenant_ability_entry_t::data( m_player->dbc->ptr ) )
   {
@@ -516,7 +516,7 @@ unsigned covenant_state_t::get_covenant_ability_spell_id( bool generic ) const
     return e.spell_id;
   }
 
-  return 0u;
+  return 0U;
 }
 
 report::sc_html_stream& covenant_state_t::generate_report( report::sc_html_stream& root ) const
@@ -545,7 +545,7 @@ report::sc_html_stream& covenant_state_t::generate_report( report::sc_html_strea
 
   root << "</ul></td></tr>\n";
 
-  if ( m_soulbinds.size() )
+  if ( !m_soulbinds.empty() )
   {
     root << "<tr class=\"left\"><th></th><td><ul class=\"float\">\n";
 
@@ -562,7 +562,7 @@ report::sc_html_stream& covenant_state_t::generate_report( report::sc_html_strea
 }
 
 // Conduit checking function for default profile generation in report_helper::check_gear()
-void covenant_state_t::check_conduits( util::string_view tier_name, int max_conduit_rank ) const
+void covenant_state_t::check_conduits( util::string_view tier_name, unsigned max_conduit_rank ) const
 {
   // Copied logic from covenant_state_t::generate_report(), feel free to improve it
   for ( const auto& e : conduit_entry_t::data( m_player->dbc->ptr ) )
@@ -574,7 +574,6 @@ void covenant_state_t::check_conduits( util::string_view tier_name, int max_cond
         unsigned int conduit_rank = std::get<1>( cd ) + 1;
         if ( conduit_rank != max_conduit_rank )
         {
-          auto conduit = m_player -> find_conduit_spell( e.name );
           m_player -> sim -> error( "Player {} has conduit {} equipped at rank {}, conduit rank for {} is {}.\n",
                                     m_player -> name(), e.name, conduit_rank, tier_name, max_conduit_rank );
         }
@@ -705,10 +704,10 @@ bool parse_blizzard_covenant_information( player_t*               player,
     return true;
   }
 
-  for ( auto i = 0u; i < covenant_data[ "soulbinds" ].Size(); ++i )
+  for ( auto i = 0U; i < covenant_data[ "soulbinds" ].Size(); ++i )
   {
     const auto& soulbind = covenant_data[ "soulbinds" ][ i ];
-    if ( !soulbind[ "is_active" ].GetBool() )
+    if ( !soulbind.HasMember( "is_active" ) || !soulbind[ "is_active" ].GetBool() )
     {
       continue;
     }
@@ -719,7 +718,7 @@ bool parse_blizzard_covenant_information( player_t*               player,
 
     player->covenant->set_soulbind_id( fmt::format( "{}:{}", soulbind_name, soulbind_id ) );
 
-    for ( auto trait_idx = 0u; trait_idx < soulbind[ "traits" ].Size(); ++trait_idx )
+    for ( auto trait_idx = 0U; trait_idx < soulbind[ "traits" ].Size(); ++trait_idx )
     {
       const auto& entry = soulbind[ "traits" ][ trait_idx ];
       // Soulbind spell

@@ -34,6 +34,7 @@ struct sequence_t : public action_t
   virtual bool ready() override;
   void restart();
   bool can_restart();
+  void init_finished() override;
 };
 
 struct strict_sequence_t : public action_t
@@ -45,11 +46,12 @@ struct strict_sequence_t : public action_t
   // Allow strict sequence sub-actions to be skipped if they are not ready. Default = false.
   bool allow_skip;
 
-  strict_sequence_t(player_t*, util::string_view opts);
+  strict_sequence_t( player_t*, util::string_view options );
 
   bool ready() override;
   void reset() override;
   void cancel() override;
   void interrupt_action() override;
   void schedule_execute(action_state_t* execute_state = nullptr) override;
+  void init_finished() override;
 };

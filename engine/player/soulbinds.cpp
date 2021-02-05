@@ -171,7 +171,13 @@ void niyas_tools_burrs( special_effect_t& effect )
     spiked_burrs_t( const special_effect_t& e ) :
       niyas_tools_proc_t( "spiked_burrs", e.player, e.player->find_spell( 333526 ),
                           value_from_desc_vars( e, "points", "\\$SP\\*" ), false )
-    {}
+    {
+      // In-game, the driver (id=320659) triggers the projectile (id=321659) which triggers the ground effect
+      // (id=321660) which finally triggers the dot (id=333526). Since we don't have a way of accounting for the ground
+      // effects and mobs moving into it, we execute the dot directly and pull the fixed travel time from the projectile
+      // spell.
+      travel_delay = e.player->find_spell( 321659 )->missile_speed();
+    }
 
     // UPDATE: Not the case anymore as of 2020-11-20 hotfixes. Keeping commented just in case.
     /*result_e calculate_result( action_state_t* s ) const override
@@ -424,17 +430,20 @@ void thrill_seeker( special_effect_t& effect )
 
   auto counter_buff = buff_t::find( effect.player, "thrill_seeker" );
   if ( !counter_buff )
-    counter_buff = make_buff( effect.player, "thrill_seeker", effect.player->find_spell( 331939 ) );
+  {
+    counter_buff = make_buff( effect.player, "thrill_seeker", effect.player->find_spell( 331939 ) )
+                       ->set_period( 0_ms )
+                       ->set_tick_behavior( buff_tick_behavior::NONE );
+  }
 
   auto buff = buff_t::find( effect.player, "euphoria" );
   if ( !buff )
   {
     buff = make_buff( effect.player, "euphoria", effect.player->find_spell( 331937 ) )
-      ->set_default_value_from_effect_type( A_HASTE_ALL )
-      ->set_pct_buff_type( STAT_PCT_BUFF_HASTE );
+               ->set_default_value_from_effect_type( A_HASTE_ALL )
+               ->set_pct_buff_type( STAT_PCT_BUFF_HASTE );
 
-    counter_buff->set_stack_change_callback( [ buff ] ( buff_t* b, int, int )
-    {
+    counter_buff->set_stack_change_callback( [ buff ]( buff_t* b, int, int ) {
       if ( b->at_max_stacks() )
       {
         buff->trigger();
@@ -445,12 +454,45 @@ void thrill_seeker( special_effect_t& effect )
 
   auto eff_data = &effect.driver()->effectN( 1 );
 
-  // TODO: do you still gain stacks while euphoria is active?
+  // You still gain stacks while euphoria is active
   effect.player->register_combat_begin( [ eff_data, counter_buff ]( player_t* p ) {
     make_repeating_event( *p->sim, eff_data->period(), [ counter_buff ] { counter_buff->trigger(); } );
   } );
 
-  // TODO: implement gains from killing blows
+  auto p                     = effect.player;
+  int killing_blow_stacks    = as<int>( p->find_spell( 331586 )->effectN( 1 ).base_value() );
+  double killing_blow_chance = p->sim->shadowlands_opts.thrill_seeker_killing_blow_chance;
+  int number_of_players      = 1;
+  // If the user does not override the value for this we will set different defaults based on the sim here
+  // Default: 1/20 = 0.05
+  // DungeonSlice: 1/4 = 0.25
+  if ( killing_blow_chance < 0 )
+  {
+    if ( effect.player->sim->fight_style == "DungeonSlice" )
+    {
+      number_of_players = 4;
+    }
+    else
+    {
+      number_of_players = 20;
+    }
+    killing_blow_chance = 1.0 / number_of_players;
+  }
+
+  range::for_each( p->sim->actor_list, [ p, counter_buff, killing_blow_stacks, killing_blow_chance ]( player_t* t ) {
+    if ( !t->is_enemy() )
+      return;
+
+    t->register_on_demise_callback( p, [ p, counter_buff, killing_blow_stacks, killing_blow_chance ]( player_t* ) {
+      if ( p->sim->event_mgr.canceled )
+        return;
+
+      if ( p->rng().roll( killing_blow_chance ) )
+      {
+        counter_buff->trigger( killing_blow_stacks );
+      }
+    } );
+  } );
 }
 
 void soothing_shade( special_effect_t& effect )
@@ -1035,9 +1077,31 @@ void lead_by_example( special_effect_t& effect )
     // The duration modifier for each class comes from the description variables of Lead by Example (id=342156)
     duration *= class_value_from_desc_vars( effect, "mod" );
 
+    int allies_nearby = effect.player->sim->shadowlands_opts.lead_by_example_nearby;
+    // If the user doesn't specify a number of allies affected by LbA, use default values based on position and fight style
+    if ( allies_nearby < 0 )
+    {
+      switch( effect.player -> position() )
+      {
+        // Assume that players right in front or at the back of the boss have enough allies nearby to get full effect
+        case POSITION_BACK:
+        case POSITION_FRONT:
+          // For DungeonSlice, always assume two allies
+          if ( util::str_compare_ci( effect.player -> sim -> fight_style, "DungeonSlice" ) )
+            allies_nearby = 2;
+          else
+            allies_nearby = 4;
+          break;
+        // Assume two nearby allies for other positions
+        default:
+          allies_nearby = 2;
+          break;
+      }
+    }
+
     buff = make_buff( effect.player, "lead_by_example", s_data )
       ->set_default_value_from_effect( 1 )
-      ->modify_default_value( s_data->effectN( 2 ).percent() * effect.player->sim->shadowlands_opts.lead_by_example_nearby )
+      ->modify_default_value( s_data->effectN( 2 ).percent() * allies_nearby )
       ->set_duration( timespan_t::from_seconds( duration ) )
       ->set_pct_buff_type( STAT_PCT_BUFF_STRENGTH )
       ->set_pct_buff_type( STAT_PCT_BUFF_AGILITY )
@@ -1149,7 +1213,7 @@ void heirmirs_arsenal_marrowed_gemstone( special_effect_t& effect )
 }
 
 // Helper function for registering an effect, with autoamtic skipping initialization if soulbind spell is not available
-void register_soulbind_special_effect( unsigned spell_id, custom_cb_t init_callback, bool fallback = false )
+void register_soulbind_special_effect( unsigned spell_id, const custom_cb_t& init_callback, bool fallback = false )
 {
   unique_gear::register_special_effect( spell_id, [ &, init_callback ] ( special_effect_t& effect ) {
     if ( effect.source != SPECIAL_EFFECT_SOURCE_FALLBACK && !effect.player->find_soulbind_spell( effect.driver()->name_cstr() )->ok() )

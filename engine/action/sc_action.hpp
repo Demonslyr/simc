@@ -211,22 +211,23 @@ public:
   /// This ability leaves a ticking dot on the ground, and doesn't move when the target moves. Used with original_x and original_y
   bool ground_aoe;
 
-  /// Duration of the ground area trigger
-  timespan_t ground_aoe_duration;
-
   /// Round spell base damage to integer before using
   bool round_base_dmg;
 
   /// Used with tick_action, tells tick_action to update state on every tick.
   bool dynamic_tick_action;
 
-  /// Type of attack power used by the ability
-  attack_power_type ap_type;
 
   /// Did a channel action have an interrupt_immediate used to cancel it on it
   bool interrupt_immediate_occurred;
 
   bool hit_any_target;
+
+  /// Duration of the ground area trigger
+  timespan_t ground_aoe_duration;
+
+  /// Type of attack power used by the ability
+  attack_power_type ap_type;
 
   /**
    * @brief Behavior of dot.
@@ -588,6 +589,8 @@ public:
   }
 
   void parse_spell_data( const spell_data_t& );
+  
+  void parse_effect_data( const spelleffect_data_t& );
 
   void parse_target_str();
 
@@ -879,8 +882,6 @@ public:
   // mutating virtual functions
   // ==========================
 
-  virtual void parse_effect_data( const spelleffect_data_t& );
-
   virtual void parse_options( util::string_view options_str );
 
   virtual void consume_resource();
@@ -891,11 +892,11 @@ public:
 
   virtual void last_tick(dot_t* d);
 
-  virtual void assess_damage(result_amount_type, action_state_t* assess_state);
+  virtual void assess_damage( result_amount_type, action_state_t* state );
 
   virtual void record_data(action_state_t* data);
 
-  virtual void schedule_execute(action_state_t* execute_state = nullptr);
+  virtual void schedule_execute( action_state_t* state = nullptr );
 
   virtual void queue_execute( execute_type type );
 
@@ -954,7 +955,7 @@ public:
   virtual void update_state( action_state_t* s, result_amount_type rt )
   { snapshot_internal( s, update_flags, rt ); }
 
-  event_t* start_action_execute_event( timespan_t time, action_state_t* execute_state = nullptr );
+  event_t* start_action_execute_event( timespan_t time, action_state_t* state = nullptr );
 
   virtual bool consume_cost_per_tick( const dot_t& dot );
 

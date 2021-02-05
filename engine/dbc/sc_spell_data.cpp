@@ -4,6 +4,7 @@
 // ==========================================================================
 
 #include "dbc.hpp"
+#include "dbc/item_runeforge.hpp"
 #include "specialization_spell.hpp"
 #include "active_spells.hpp"
 #include "covenant_data.hpp"
@@ -261,18 +262,18 @@ struct class_info_t {
   unsigned spell_family;
 };
 static constexpr std::array<class_info_t, 12> _class_info { {
-  { "Warrior",       1u <<  0,   4 },
-  { "Paladin",       1u <<  1,  10 },
-  { "Hunter",        1u <<  2,   9 },
-  { "Rogue",         1u <<  3,   8 },
-  { "Priest",        1u <<  4,   6 },
-  { "DeathKnight",   1u <<  5,  15 },
-  { "Shaman",        1u <<  6,  11 },
-  { "Mage",          1u <<  7,   3 },
-  { "Warlock",       1u <<  8,   5 },
-  { "Monk",          1u <<  9,  53 },
-  { "Druid",         1u << 10,   7 },
-  { "DemonHunter",   1u << 11, 107 },
+  { "Warrior",       1U <<  0,   4 },
+  { "Paladin",       1U <<  1,  10 },
+  { "Hunter",        1U <<  2,   9 },
+  { "Rogue",         1U <<  3,   8 },
+  { "Priest",        1U <<  4,   6 },
+  { "DeathKnight",   1U <<  5,  15 },
+  { "Shaman",        1U <<  6,  11 },
+  { "Mage",          1U <<  7,   3 },
+  { "Warlock",       1U <<  8,   5 },
+  { "Monk",          1U <<  9,  53 },
+  { "Druid",         1U << 10,   7 },
+  { "DemonHunter",   1U << 11, 107 },
 } };
 
 static constexpr std::array<util::string_view, 33> _race_strings { {
@@ -317,7 +318,7 @@ struct expr_data_map_t
   expr_data_e type;
 };
 
-static constexpr std::array<expr_data_map_t, 12> expr_map { {
+static constexpr std::array<expr_data_map_t, 13> expr_map { {
   { "spell", DATA_SPELL },
   { "talent", DATA_TALENT },
   { "effect", DATA_EFFECT },
@@ -329,7 +330,8 @@ static constexpr std::array<expr_data_map_t, 12> expr_map { {
   { "azerite", DATA_AZERITE_SPELL },
   { "covenant_spell", DATA_COVENANT_SPELL },
   { "soulbind_spell", DATA_SOULBIND_SPELL },
-  { "conduit_spell", DATA_CONDUIT_SPELL }
+  { "conduit_spell", DATA_CONDUIT_SPELL },
+  { "runeforge_spell", DATA_RUNEFORGE_SPELL }
 } };
 
 expr_data_e parse_data_type( util::string_view name )
@@ -540,6 +542,12 @@ struct spell_list_expr_t : public spell_data_expr_t
       case DATA_CONDUIT_SPELL:
         range::for_each( conduit_entry_t::data( dbc.ptr ),
             [this]( const conduit_entry_t& e ) {
+              result_spell_list.push_back( e.spell_id );
+        } );
+        break;
+      case DATA_RUNEFORGE_SPELL:
+        range::for_each( runeforge_legendary_entry_t::data( dbc.ptr ),
+            [this]( const runeforge_legendary_entry_t& e ) {
               result_spell_list.push_back( e.spell_id );
         } );
         break;
@@ -861,10 +869,7 @@ struct spell_class_expr_t : public spell_list_expr_t
 
       // legendary spells are safe to match by spell family
       const auto legendary = runeforge_legendary_entry_t::find_by_spellid( spell_id, ptr );
-      if ( !legendary.empty() )
-        return true;
-
-      return false;
+      return !legendary.empty();
     };
 
     if ( check_spell( spell.id(), dbc.ptr ) )
@@ -1112,6 +1117,8 @@ std::unique_ptr<spell_data_expr_t> spell_data_expr_t::create_spell_expression( d
   if ( data_type == static_cast<expr_data_e>( -1 ) )
   {
     std::vector<std::string> valid_types;
+    valid_types.reserve(expr_map.size());
+
     for(const auto& entry : expr_map)
     {
       valid_types.push_back(std::string(entry.name));

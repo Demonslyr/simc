@@ -487,7 +487,7 @@ struct flask_base_t : public dbc_consumable_base_t
   }
 
   bool disabled_consumable() const override
-  { return dbc_consumable_base_t::disabled_consumable() || sim -> allow_flasks == false; }
+  { return dbc_consumable_base_t::disabled_consumable() || !sim -> allow_flasks; }
 
   // Figure out the default consumable for flasks
   std::string consumable_default() const override
@@ -539,17 +539,12 @@ struct flask_base_t : public dbc_consumable_base_t
     {
       double mul = 1.0;
 
-      auto ep = player->find_soulbind_spell( "Exacting Prepartion" );
+      auto ep = player->find_soulbind_spell( "Exacting Preparation" );
       if ( ep->ok() )
         mul *= 1.0 + ep->effectN( 1 ).percent();  // While all effects have the same value, effect#1 applies to flasks
 
       range::for_each( buff->stats, [mul]( stat_buff_t::buff_stat_t& s ) { s.amount *= mul; } );
     }
-
-
-    auto ep = player->find_soulbind_spell( "Exacting Prepartion" );
-    if ( !ep->ok() )
-      return;
   }
 
   bool ready() override
@@ -633,7 +628,7 @@ struct potion_t : public dbc_consumable_base_t
   }
 
   bool disabled_consumable() const override
-  { return dbc_consumable_base_t::disabled_consumable() || sim -> allow_potions == false; }
+  { return dbc_consumable_base_t::disabled_consumable() || !static_cast<bool>(sim -> allow_potions); }
 
   std::string consumable_default() const override
   {
@@ -711,7 +706,7 @@ struct potion_t : public dbc_consumable_base_t
     if ( !player->in_combat )
       cd_duration = cooldown->duration - pre_pot_time;
 
-    action_t::update_ready( cd_duration );
+    dbc_consumable_base_t::update_ready( cd_duration );
   }
 
   // Overwrite with fanciful execution due to prepotting
@@ -761,7 +756,7 @@ struct augmentation_t : public dbc_consumable_base_t
 
   bool disabled_consumable() const override
   {
-    return dbc_consumable_base_t::disabled_consumable() || sim -> allow_augmentations == false;
+    return dbc_consumable_base_t::disabled_consumable() || !static_cast<bool>(sim -> allow_augmentations);
   }
 
   std::string consumable_default() const override
@@ -837,7 +832,7 @@ struct food_t : public dbc_consumable_base_t
   }
 
   bool disabled_consumable() const override
-  { return dbc_consumable_base_t::disabled_consumable() || sim -> allow_food == false; }
+  { return dbc_consumable_base_t::disabled_consumable() || !static_cast<bool>(sim -> allow_food); }
 
   std::string consumable_default() const override
   {
@@ -933,7 +928,7 @@ struct food_t : public dbc_consumable_base_t
         mul *= 2.0;
 
       // TODO: confirm if these two modifiers are multiplicative or additive
-      auto ep = player->find_soulbind_spell( "Exacting Prepartion" );
+      auto ep = player->find_soulbind_spell( "Exacting Preparation" );
       if ( ep->ok() )
         mul *= 1.0 + ep->effectN( 2 ).percent();  // While all effects have the same value, effect#2 applies to well fed
 

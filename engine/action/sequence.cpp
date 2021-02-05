@@ -56,6 +56,17 @@ sequence_t::sequence_t( player_t* p, util::string_view sub_action_str ) :
   option.wait_on_ready = -1;
 }
 
+// sequence_t::init_finished ================================================
+
+void sequence_t::init_finished()
+{
+  action_t::init_finished();
+
+  // Clean-up invalid actions
+  sub_actions.erase( std::remove_if( sub_actions.begin(), sub_actions.end(), [] ( action_t* a ) { return a -> background; } ),
+                     sub_actions.end() );
+}
+
 // sequence_t::schedule_execute =============================================
 
 void sequence_t::schedule_execute( action_state_t* execute_state )
@@ -64,9 +75,10 @@ void sequence_t::schedule_execute( action_state_t* execute_state )
 
   if ( waiting )
   {
+    timespan_t available = player -> available();
     if ( sim -> log )
-      sim -> out_log.printf( "Player %s is waiting for %.3f, since action #%d (%s) is not ready", player -> name(), player -> available().total_seconds(), current_action, sub_actions[ current_action ] -> name() );
-    player -> schedule_ready( player -> available(), true );
+      sim -> out_log.printf( "Player %s is waiting for %.3f, since action #%d (%s) is not ready", player -> name(), available.total_seconds(), current_action, sub_actions[ current_action ] -> name() );
+    player -> schedule_ready( available, true );
     waiting = false;
     return;
   }
@@ -133,13 +145,12 @@ bool sequence_t::ready()
 // Strict Sequence Action
 // ==========================================================================
 
-strict_sequence_t::strict_sequence_t( player_t* p, util::string_view sub_action_str ) :
-  action_t( ACTION_SEQUENCE, "strict_sequence", p ),
-  current_action( 0 ), allow_skip( false )
+strict_sequence_t::strict_sequence_t( player_t* p, util::string_view options )
+  : action_t( ACTION_SEQUENCE, "strict_sequence", p ), current_action( 0 ), allow_skip( false )
 {
   trigger_gcd = timespan_t::zero();
 
-  auto splits = util::string_split<util::string_view>( sub_action_str, ":" );
+  auto splits = util::string_split<util::string_view>( options, ":" );
   if ( ! splits.empty() )
   {
     add_option( opt_bool( "allow_skip", allow_skip ) );
@@ -168,6 +179,15 @@ strict_sequence_t::strict_sequence_t( player_t* p, util::string_view sub_action_
     a -> sequence = true;
     sub_actions.push_back( a );
   }
+}
+
+void strict_sequence_t::init_finished()
+{
+  action_t::init_finished();
+
+  // Clean-up invalid actions
+  sub_actions.erase( std::remove_if( sub_actions.begin(), sub_actions.end(), [] ( action_t* a ) { return a -> background; } ),
+                     sub_actions.end() );
 }
 
 void strict_sequence_t::cancel()
@@ -219,7 +239,7 @@ bool strict_sequence_t::ready()
   else
   {
     auto it = range::find_if( sub_actions, []( action_t* a ) {
-        return ! a -> background && a -> ready() == true;
+        return ! a -> background && a -> ready();
     } );
     return it != sub_actions.end(); // Ready if at least one action is usable
   }

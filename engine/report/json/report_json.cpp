@@ -65,7 +65,7 @@ void add_non_zero( JsonOutput root, util::string_view name, int v )
 { add_non_default( root, name, v, 0 ); }
 
 void add_non_zero( JsonOutput root, util::string_view name, unsigned v )
-{ add_non_default( root, name, v, 0u ); }
+{ add_non_default( root, name, v, 0U ); }
 
 void add_non_zero( JsonOutput root, util::string_view name, bool v )
 { add_non_default( root, name, v, false ); }
@@ -486,7 +486,7 @@ void to_json( JsonOutput root,
     }
 
 
-    if ( entry.buff_list.size() > 0 )
+    if ( !entry.buff_list.empty() )
     {
       auto buffs = json[ "buffs" ];
       buffs.make_array();
@@ -854,12 +854,12 @@ void to_json( JsonOutput& arr, const ::report::json::report_configuration_t& rep
     buffs_to_json( root[ "buffs" ], p );
     constant_buffs_to_json( root[ "buffs_constant" ], p );
 
-    if ( p.proc_list.size() > 0 )
+    if ( !p.proc_list.empty() )
     {
       procs_to_json( root[ "procs" ], p );
     }
 
-    if ( p.gain_list.size() > 0 )
+    if ( !p.gain_list.empty() )
     {
       gains_to_json( root[ "gains" ], p );
     }
@@ -919,6 +919,7 @@ void iteration_data_to_json( JsonOutput root, const std::vector<iteration_data_e
   } );
 }
 
+#ifndef SC_NO_THREADING
 void profileset_json2( const profileset::profilesets_t& profileset, const sim_t& sim, js::JsonOutput& root )
 {
 root[ "metric" ] = util::scale_metric_type_string( sim.profileset_metric.front() );
@@ -1031,18 +1032,20 @@ void profileset_json3( const profileset::profilesets_t& profilesets, const sim_t
     }
   } );
 }
+#endif
 
 void profileset_json( const ::report::json::report_configuration_t& report_configuration, const profileset::profilesets_t& profileset, const sim_t& sim, js::JsonOutput& root )
 {
-  if (report_configuration.version_intersects(">=3.0.0"))
+#ifndef SC_NO_THREADING
+  if ( report_configuration.version_intersects( ">=3.0.0" ) )
   {
-    profileset_json3(profileset, sim, root);
+    profileset_json3( profileset, sim, root );
   }
   else
   {
-    profileset_json2(profileset, sim, root);
+    profileset_json2( profileset, sim, root );
   }
-  
+#endif
 }
 
 void to_json( const ::report::json::report_configuration_t& report_configuration, JsonOutput root, const sim_t& sim )
@@ -1182,7 +1185,7 @@ void to_json( const ::report::json::report_configuration_t& report_configuration
       } );
     }
 
-    if ( sim.buff_list.size() > 0 )
+    if ( !sim.buff_list.empty() )
     {
       JsonOutput buffs_arr = root[ "sim_auras" ].make_array();
       range::for_each( sim.buff_list, [ & ]( const buff_t* b ) {
@@ -1194,12 +1197,12 @@ void to_json( const ::report::json::report_configuration_t& report_configuration
       } );
     }
 
-    if ( sim.low_iteration_data.size() > 0 )
+    if ( !sim.low_iteration_data.empty() )
     {
       iteration_data_to_json( root[ "iteration_data" ][ "low" ], sim.low_iteration_data );
     }
 
-    if ( sim.high_iteration_data.size() > 0 )
+    if ( !sim.high_iteration_data.empty() )
     {
       iteration_data_to_json( root[ "iteration_data" ][ "high" ], sim.high_iteration_data );
     }
@@ -1265,7 +1268,7 @@ void print_json_pretty( FILE* o, const sim_t& sim, const ::report::json::report_
 
   to_json( report_configuration, root[ "sim" ], sim );
 
-  if ( sim.error_list.size() > 0 )
+  if ( !sim.error_list.empty() )
   {
     root[ "notifications" ] = sim.error_list;
   }

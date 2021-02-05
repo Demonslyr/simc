@@ -1,4 +1,4 @@
-SimulationCraft 902-01 for World of Warcraft 9.0.2.36949 Live (hotfix 2020-12-16/36949)
+SimulationCraft 902-01 for World of Warcraft 9.0.2.37176 Live (hotfix 2021-02-03/37176, no-networking)
 
 Name             : Dual Wield (desc=Passive) (id=674) [Passive] 
 Class            : Frost Warrior, Hunter, Rogue, Death Knight, Monk, Demon Hunter
@@ -232,7 +232,7 @@ Attributes       : ........ ........ x....... ........   ........ ........ .....
                  : ........ .....x.. ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   
-                 : Periodic effect affected by haste (173), Periodic effect can crit (265)
+                 : Periodic effect affected by haste (173), Periodic effect can crit (265), Reset CD on encounter end (333)
 Effects          :
 #1 (id=18390)    : Apply Aura (6) | Periodic Heal (8): every 1 seconds
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Target: Friend (21)
@@ -375,6 +375,14 @@ Effects          :
                    Base Value: -6 | Scaled Value: -6 | PvP Coefficient: 1.00000 | Target: Self (1)
 #4 (id=710726)   : Apply Aura (6) | Modify Aggro Distance (152)
                    Base Value: -6 | Scaled Value: -6 | PvP Coefficient: 1.00000 | Target: Self (1)
+#5 (id=879204)   : Apply Aura (6) | Modify Damage Taken% (87)
+                   Base Value: -20 | Scaled Value: -20 | PvP Coefficient: 1.00000 | Misc Value: 0x7f | Target: Self (1)
+                   Affected School(s): All
+Hotfixed         : NEW EFFECT
+#6 (id=879224)   : Apply Aura (6) | Modify Damage Taken% (87)
+                   Base Value: 20 | Scaled Value: 20 | Misc Value: 0x7f | Target: Self (1)
+                   Affected School(s): All
+Hotfixed         : NEW EFFECT
 Description      : Reduces the damage your pet takes from area of effect attacks by an additional $s1%.
 Reduces the range at which enemies detect your pet.
 
@@ -1048,7 +1056,7 @@ Attributes       : ........ ........ x....... ........   ..x...x. ........ .x...
                  : ........ .....x.. ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   x....... ........ ........ ........ 
                  : ........ ........ ........ ........   
-                 : Channeled (34), Channeled (38)
+                 : Channeled (34), Channeled (38), Reset CD on encounter end (333)
 Effects          :
 #1 (id=128872)   : Apply Aura (6) | Dummy (4)
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Target: Self (1)
@@ -1102,6 +1110,7 @@ Attributes       : ........ ........ x....... ........   ........ ........ .....
                  : ........ .....x.. ........ ........   ....x... ........ ........ ........ 
                  : ........ ........ ........ ........   x....... ........ ........ ........ 
                  : ........ ........ ........ ........   
+                 : Reset CD on encounter end (333)
 Effects          :
 #1 (id=128913)   : Dummy (3)
                    Base Value: 10 | Scaled Value: 10 | PvP Coefficient: 1.00000 | Target: Self (1)
@@ -1179,6 +1188,7 @@ Attributes       : ........ ........ x....... ........   ........ ..x....x .....
                  : ........ .....x.. ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   x....... ........ ........ ........ 
                  : ........ ........ ........ ........   
+                 : Reset CD on encounter end (333)
 Effects          :
 #1 (id=129071)   : Direct Heal (10)
                    Base Value: 0 | Scaled Value: 0 (coefficient=0, delta coefficient=0.05) | SP Coefficient: 3.15000 | PvP Coefficient: 1.75000 | Radius: 0 - 40 yards | Target: At Caster (22) -> Raid Members (56)
@@ -1207,7 +1217,7 @@ Attributes       : ........ ........ ........ .......x   ........ ........ .x...
                  : ........ .....x.. ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   x....... ........ ........ ........ 
                  : ........ ........ ........ ........   
-                 : Cannot cancel aura (31), Don't display in aura bar (60)
+                 : Cannot cancel aura (31), Don't display in aura bar (60), Reset CD on encounter end (333)
 Effects          :
 #1 (id=129077)   : Summon (28)
                    Base Value: 1 | Scaled Value: 1 | PvP Coefficient: 1.00000 | Misc Value: 60849 | Misc Value 2: 0xc90 | Target: Unknown(87)
@@ -1782,6 +1792,7 @@ Attributes       : ........ ........ x....... ........   ........ ........ .....
                  : ........ .....x.. ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   x....... ........ ........ ........ 
                  : ........ ........ ........ ........   
+                 : Reset CD on encounter end (333)
 Effects          :
 #1 (id=132060)   : Apply Aura (6) | Absorb Damage (69)
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Misc Value: 0x7f | Target: Friend (21)
@@ -2237,7 +2248,7 @@ Attributes       : ........ ........ x....... ........   ........ ........ .....
                  : ........ .....x.. ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   
-                 : Periodic effect affected by haste (173), Periodic effect can crit (265)
+                 : Periodic effect affected by haste (173), Periodic effect can crit (265), Reset CD on encounter end (333)
 Effects          :
 #1 (id=141348)   : Apply Aura (6) | Periodic Heal (8): every 1 seconds
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Target: Friend (21)
@@ -2575,7 +2586,7 @@ Attributes       : ........ ........ x....... ........   ........ ........ .x...
                  : ........ .....x.. ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   x....... ........ ........ ........ 
                  : ........ ........ ........ ........   
-                 : Don't display in aura bar (60)
+                 : Don't display in aura bar (60), Reset CD on encounter end (333)
 Effects          :
 #1 (id=156549)   : Summon (28)
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Misc Value: 63508 | Misc Value 2: 0xcbe | Radius: 0 - 3 yards | Target: Unknown(63) -> Unknown(86)
@@ -3375,6 +3386,7 @@ Attributes       : ........ ........ x....... ........   ........ ........ .x...
                  : ........ .....x.. ........ ....x...   ........ ........ ..x..... ....x... 
                  : ........ ........ ........ ........   x....... ........ ........ ........ 
                  : ........ ........ ........ ........   
+                 : Reset CD on encounter end (333)
 Effects          :
 #1 (id=171856)   : Summon (28)
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Misc Value: 73967 | Misc Value 2: 0xd19 | Target: At Enemy (53)
@@ -3423,15 +3435,18 @@ Attributes       : ......xx ........ ........ ........   ........ ........ .....
                  : Passive (6), Hidden (7)
 Effects          :
 #1 (id=179707)   : Apply Aura (6) | Add Percent Modifier (108): Spell Direct Amount (0)
-                   Base Value: 9 | Scaled Value: 9 | PvP Coefficient: 1.00000 | Target: Self (1)
+                   Base Value: 11 | Scaled Value: 11 | PvP Coefficient: 1.00000 | Target: Self (1)
                    Affected Spells: Tiger Palm (100780), Blackout Kick (100784), Spinning Crane Kick (107270), Fists of Fury (113656), Breath of Fire (115181), Fists of Fury (117418), Crackling Jade Lightning (117952), Keg Smash (121253), Flying Serpent Kick (123586), Chi Wave (132467), Chi Burst (148135), Rushing Jade Wind (148187), Whirling Dragon Punch (158221), Rising Sun Kick (185099), Eye of the Tiger (196608), Special Delivery (196733), Blackout Kick (205523), Blackout Kick (228649), Fist of the White Tiger (261947), Fist of the White Tiger (261977), Sunrise Technique (275673), Glory of the Dawn (288636), Faeline Stomp (327264), Spinning Crane Kick (330901), Spinning Crane Kick (330903), Breath of Fire (330907), Keg Smash (330911), Fists of Fury (345714), Faeline Stomp (345727)
                    Family Flags: 103
+Hotfixed         : Base Value (9 -> 11)
 #2 (id=191108)   : Apply Aura (6) | Add Percent Modifier (108): Spell Periodic Amount (22)
-                   Base Value: 9 | Scaled Value: 9 | PvP Coefficient: 1.00000 | Misc Value: 22 | Target: Self (1)
+                   Base Value: 11 | Scaled Value: 11 | PvP Coefficient: 1.00000 | Misc Value: 22 | Target: Self (1)
                    Affected Spells: Tiger Palm (100780), Blackout Kick (100784), Spinning Crane Kick (107270), Fists of Fury (113656), Breath of Fire (115181), Fists of Fury (117418), Crackling Jade Lightning (117952), Keg Smash (121253), Flying Serpent Kick (123586), Chi Wave (132467), Chi Burst (148135), Rushing Jade Wind (148187), Whirling Dragon Punch (158221), Rising Sun Kick (185099), Eye of the Tiger (196608), Special Delivery (196733), Blackout Kick (205523), Blackout Kick (228649), Fist of the White Tiger (261947), Fist of the White Tiger (261977), Sunrise Technique (275673), Glory of the Dawn (288636), Faeline Stomp (327264), Spinning Crane Kick (330901), Spinning Crane Kick (330903), Breath of Fire (330907), Keg Smash (330911), Fists of Fury (345714), Faeline Stomp (345727)
                    Family Flags: 103
+Hotfixed         : Base Value (9 -> 11)
 #3 (id=191109)   : Apply Aura (6) | Modify Pet Damage Done% (429)
-                   Base Value: 9 | Scaled Value: 9 | PvP Coefficient: 1.00000 | Target: Self (1)
+                   Base Value: 11 | Scaled Value: 11 | PvP Coefficient: 1.00000 | Target: Self (1)
+Hotfixed         : Base Value (9 -> 11)
 #4 (id=191110)   : Apply Aura (6) | Hasted Cooldown Duration (Category) (457)
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Misc Value: 1490 | Target: Self (1)
                    Affected Spells (Category): Keg Smash (121253), Keg Smash (330911)
@@ -3460,7 +3475,6 @@ Effects          :
                    Base Value: 30 | Scaled Value: 30 | PvP Coefficient: 1.00000 | Misc Value 2: 0x4 | Target: Self (1)
 #12 (id=260843)   : Apply Aura (6) | Threat (10)
                    Base Value: 450 | Scaled Value: 450 | PvP Coefficient: 1.00000 | Misc Value: 127 | Target: Self (1)
-Hotfixed         : Base Value (400 -> 450)
 #13 (id=260844)   : Apply Aura (6) | Modify Attacker Melee Crit Chance (187)
                    Base Value: -6 | Scaled Value: -6 | PvP Coefficient: 1.00000 | Target: Self (1)
 #14 (id=260845)   : Apply Aura (6) | Add Flat Modifier (107): Spell Global Cooldown (21)
@@ -3583,15 +3597,18 @@ Attributes       : ....x.xx x....... ........ ........   ........ ........ .....
                  : Passive (6), Hidden (7)
 Effects          :
 #1 (id=179709)   : Apply Aura (6) | Add Percent Modifier (108): Spell Direct Amount (0)
-                   Base Value: -13 | Scaled Value: -13 | PvP Coefficient: 1.00000 | Target: Self (1)
+                   Base Value: -11 | Scaled Value: -11 | PvP Coefficient: 1.00000 | Target: Self (1)
                    Affected Spells: Tiger Palm (100780), Blackout Kick (100784), Spinning Crane Kick (107270), Fists of Fury (113656), Breath of Fire (115181), Fists of Fury (117418), Crackling Jade Lightning (117952), Keg Smash (121253), Flying Serpent Kick (123586), Chi Wave (132467), Chi Burst (148135), Rushing Jade Wind (148187), Whirling Dragon Punch (158221), Rising Sun Kick (185099), Eye of the Tiger (196608), Special Delivery (196733), Blackout Kick (205523), Blackout Kick (228649), Fist of the White Tiger (261947), Fist of the White Tiger (261977), Sunrise Technique (275673), Glory of the Dawn (288636), Faeline Stomp (327264), Spinning Crane Kick (330901), Spinning Crane Kick (330903), Breath of Fire (330907), Keg Smash (330911), Fists of Fury (345714), Faeline Stomp (345727)
                    Family Flags: 103
+Hotfixed         : Base Value (-13 -> -11)
 #2 (id=191100)   : Apply Aura (6) | Add Percent Modifier (108): Spell Periodic Amount (22)
-                   Base Value: -13 | Scaled Value: -13 | PvP Coefficient: 1.00000 | Misc Value: 22 | Target: Self (1)
+                   Base Value: -11 | Scaled Value: -11 | PvP Coefficient: 1.00000 | Misc Value: 22 | Target: Self (1)
                    Affected Spells: Tiger Palm (100780), Blackout Kick (100784), Spinning Crane Kick (107270), Fists of Fury (113656), Breath of Fire (115181), Fists of Fury (117418), Crackling Jade Lightning (117952), Keg Smash (121253), Flying Serpent Kick (123586), Chi Wave (132467), Chi Burst (148135), Rushing Jade Wind (148187), Whirling Dragon Punch (158221), Rising Sun Kick (185099), Eye of the Tiger (196608), Special Delivery (196733), Blackout Kick (205523), Blackout Kick (228649), Fist of the White Tiger (261947), Fist of the White Tiger (261977), Sunrise Technique (275673), Glory of the Dawn (288636), Faeline Stomp (327264), Spinning Crane Kick (330901), Spinning Crane Kick (330903), Breath of Fire (330907), Keg Smash (330911), Fists of Fury (345714), Faeline Stomp (345727)
                    Family Flags: 103
+Hotfixed         : Base Value (-13 -> -11)
 #3 (id=191101)   : Apply Aura (6) | Dummy (4)
-                   Base Value: -21 | Scaled Value: -21 | PvP Coefficient: 1.00000 | Target: Self (1)
+                   Base Value: -11 | Scaled Value: -11 | PvP Coefficient: 1.00000 | Target: Self (1)
+Hotfixed         : Base Value (-21 -> -11)
 #4 (id=191102)   : Apply Aura (6) | Add Flat Modifier (107): Spell Effect 2 (12)
                    Base Value: 2 | Scaled Value: 2 | PvP Coefficient: 1.00000 | Misc Value: 12 | Target: Self (1)
                    Affected Spells: Tiger Palm (100780)
@@ -4115,7 +4132,7 @@ Effects          :
 #1 (id=240042)   : Instant Kill (1)
                    Base Value: 1 | Scaled Value: 1 | PvP Coefficient: 1.00000 | Target: Enemy (6)
 #2 (id=776638)   : Dummy (3)
-                   Base Value: 120 | Scaled Value: 120 | PvP Coefficient: 1.00000 | Target: Enemy (6)
+                   Base Value: 50 | Scaled Value: 50 | PvP Coefficient: 1.00000 | Target: Enemy (6)
 #3 (id=776639)   : Dummy (3)
                    Base Value: 20 | Scaled Value: 20 | PvP Coefficient: 1.00000 | Target: Enemy (6)
 Description      : Instantly kills any creature under level $m2, or player under $m3% health.
@@ -5806,7 +5823,7 @@ Attributes       : ........ ........ ........ ........   ........ ........ .....
                  : ........ .....x.. ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   
-                 : Fixed travel time (292)
+                 : Fixed travel time (292), Reset CD on encounter end (333)
 Effects          :
 #1 (id=477694)   : Trigger Missiles (32)
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Trigger Spell: 256893 | Radius: 0 - 5 yards | Target: Enemy (6)
@@ -9274,6 +9291,7 @@ Effects          :
 Description      : Expel Harm now generates $s1 Chi.
 
 Name             : Touch of Death (id=322109) [Spell Family (53)] 
+Hotfixed         : Attributes
 Class            : Monk
 School           : Physical
 Spell Type       : Melee
@@ -9288,10 +9306,10 @@ Attributes       : ....x... ........ x.x..x.. ........   ........ .x...... .....
                  : ........ x....... ........ .....x..   ........ ........ .......x .....x.. 
                  : ........ ........ ........ .....x..   ........ ........ ........ ........ 
                  : ........ ....x... ........ ........   ........ ........ ........ ........ 
-                 : ........ ........ ........ ........   ........ ........ ........ ........ 
+                 : ........ .....x.. ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   x......x ........ ........ ........ 
                  : ........ ........ ........ ........   
-                 : Cannot dodge/parry/block (21), Cannot crit (93), Requires main-hand weapon (106), Disable player multipliers (221)
+                 : Cannot dodge/parry/block (21), Cannot crit (93), Requires main-hand weapon (106), Disable player multipliers (221), Reset CD on encounter end (333)
 Effects          :
 #1 (id=810250)   : School Damage (2): physical
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Chain Multiplier: 1 | Chain Targets: 1 | Target: Enemy (6)
@@ -9349,7 +9367,7 @@ Attributes       : ........ ........ x....... ........   ........ ........ .x...
                  : ........ .....x.. ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   x....... ........ ........ ........ 
                  : ........ ........ ........ ........   
-                 : Don't display in aura bar (60)
+                 : Don't display in aura bar (60), Reset CD on encounter end (333)
 Effects          :
 #1 (id=810260)   : Summon (28)
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Misc Value: 165374 | Misc Value 2: 0x13bf | Radius: 3 yards | Target: Unknown(50)
@@ -9782,7 +9800,7 @@ Attributes       : ........ ........ x....... ........   ........ ........ .x...
                  : ........ .....x.. ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   x....... ........ ........ ........ 
                  : ........ ........ ........ ........   
-                 : Don't display in aura bar (60)
+                 : Don't display in aura bar (60), Reset CD on encounter end (333)
 Effects          :
 #1 (id=815332)   : Summon (28)
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Misc Value: 166949 | Misc Value 2: 0xe95 | Radius: 3 yards | Target: Unknown(50)
@@ -9968,7 +9986,7 @@ Spell Type       : Magic
 Range            : 50000 yards
 Attributes       : ........ ........ ........ ........   ........ ........ ........ ........ 
                  : ..x..... ........ ........ .....x..   ........ ........ ........ ......x. 
-                 : ........ ........ ........ ........   ........ ........ ........ ........ 
+                 : ........ x....... ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ .....x..   ........ ........ ........ ........ 
                  : ........ .....x.. ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   ........ ........ ........ ........ 
@@ -9988,7 +10006,7 @@ Range            : 50000 yards
 Attributes       : ........ ........ ........ ........   ........ ........ ........ ........ 
                  : ..x..... ........ ........ .....x..   ........ ........ ........ ......x. 
                  : ........ ........ ........ ........   ........ ........ ........ ........ 
-                 : ........ ........ ........ .....x..   ........ ........ ........ ........ 
+                 : ........ ........ ........ ...x.x..   ........ ........ ........ ........ 
                  : ........ .....x.. ........ ........   ........ ........ ....x... x....... 
                  : ........ ........ ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   x....... ........ ........ ........ 
@@ -11186,10 +11204,6 @@ Effects          :
 Name             : Clouded Focus (id=337343) [Spell Family (53), Passive] 
 School           : Physical
 Spell Type       : None
-Internal Cooldown: 0.1 seconds
-Proc Chance      : 100%
-Proc Flags       : ........ ......x. ........ ........ 
-                 : Magic Heal
 Attributes       : ......x. ........ ........ .......x   ........ ..x..... ........ ........ 
                  : ........ ........ ........ ....x...   ........ ........ xx..x... ........ 
                  : ........ ........ .......x ........   ........ ........ ........ ........ 
@@ -11200,7 +11214,7 @@ Attributes       : ......x. ........ ........ .......x   ........ ..x..... .....
                  : ........ ........ ........ ........   
                  : Passive (6), Cannot cancel aura (31), Disable player procs (112), Disable target procs (113), Disable weapon procs (151)
 Effects          :
-#1 (id=835312)   : Apply Aura (6) | Proc Trigger Spell (42): Clouded Focus
+#1 (id=835312)   : Apply Aura (6) | Dummy (4)
                    Base Value: 20 | Scaled Value: 20 | PvP Coefficient: 1.00000 | Trigger Spell: 337476 | Target: Self (1)
 Description      : Healing with Enveloping Mists or Vivify while channeling Soothing Mists increases their healing done by $337476m1% and reduces their mana cost by $337476m2%. Stacks up to $337476u times.
 
@@ -12011,11 +12025,11 @@ Attributes       : ......xx x....... ........ ........   ........ ........ .....
                  : Passive (6), Hidden (7)
 Effects          :
 #1 (id=872417)   : Apply Aura (6) | Add Percent Modifier (108): Spell Direct Amount (0)
-                   Base Value: 2 | Scaled Value: 2 | PvP Coefficient: 1.00000 | Target: Self (1)
+                   Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Target: Self (1)
                    Affected Spells: Tiger Palm (100780), Blackout Kick (100784), Spinning Crane Kick (107270), Fists of Fury (113656), Breath of Fire (115181), Fists of Fury (117418), Crackling Jade Lightning (117952), Keg Smash (121253), Flying Serpent Kick (123586), Chi Wave (132467), Chi Burst (148135), Rushing Jade Wind (148187), Whirling Dragon Punch (158221), Rising Sun Kick (185099), Eye of the Tiger (196608), Special Delivery (196733), Blackout Kick (205523), Blackout Kick (228649), Fist of the White Tiger (261947), Fist of the White Tiger (261977), Sunrise Technique (275673), Glory of the Dawn (288636), Faeline Stomp (327264), Spinning Crane Kick (330901), Spinning Crane Kick (330903), Breath of Fire (330907), Keg Smash (330911), Fists of Fury (345714), Faeline Stomp (345727)
                    Family Flags: 103
 #2 (id=872418)   : Apply Aura (6) | Add Percent Modifier (108): Spell Periodic Amount (22)
-                   Base Value: 2 | Scaled Value: 2 | PvP Coefficient: 1.00000 | Misc Value: 22 | Target: Self (1)
+                   Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Misc Value: 22 | Target: Self (1)
                    Affected Spells: Tiger Palm (100780), Blackout Kick (100784), Spinning Crane Kick (107270), Fists of Fury (113656), Breath of Fire (115181), Fists of Fury (117418), Crackling Jade Lightning (117952), Keg Smash (121253), Flying Serpent Kick (123586), Chi Wave (132467), Chi Burst (148135), Rushing Jade Wind (148187), Whirling Dragon Punch (158221), Rising Sun Kick (185099), Eye of the Tiger (196608), Special Delivery (196733), Blackout Kick (205523), Blackout Kick (228649), Fist of the White Tiger (261947), Fist of the White Tiger (261977), Sunrise Technique (275673), Glory of the Dawn (288636), Faeline Stomp (327264), Spinning Crane Kick (330901), Spinning Crane Kick (330903), Breath of Fire (330907), Keg Smash (330911), Fists of Fury (345714), Faeline Stomp (345727)
                    Family Flags: 103
 

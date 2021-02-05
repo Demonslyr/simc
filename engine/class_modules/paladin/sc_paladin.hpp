@@ -557,8 +557,10 @@ public:
   virtual double 	  composite_player_target_multiplier ( player_t *target, school_e school ) const override;
   virtual double    composite_base_armor_multiplier() const override;
 
-  virtual double    resource_gain( resource_e resource_type, double amount, gain_t* g = nullptr, action_t* a = nullptr ) override;
-  virtual double    resource_loss( resource_e resource_type, double amount, gain_t* g = nullptr, action_t* a = nullptr ) override;
+  virtual double resource_gain( resource_e resource_type, double amount, gain_t* source = nullptr,
+                                action_t* action = nullptr ) override;
+  virtual double resource_loss( resource_e resource_type, double amount, gain_t* source = nullptr,
+                                action_t* action = nullptr ) override;
 
   // combat outcome functions
   virtual void      assess_damage( school_e, result_amount_type, action_state_t* ) override;
@@ -700,7 +702,9 @@ namespace buffs {
   {
     execution_sentence_debuff_t( paladin_td_t* td ) :
       buff_t( *td, "execution_sentence", debug_cast<paladin_t*>( td -> source ) -> talents.execution_sentence ),
-      accumulated_damage( 0.0 ) {}
+      accumulated_damage( 0.0 ) {
+      set_cooldown( 0_ms ); // handled by the ability
+    }
 
     void reset() override
     {
@@ -902,6 +906,11 @@ public:
           }
         }
       }
+
+
+      paladin_td_t* td = this -> td( s -> target );
+      if ( td -> debuff.reckoning -> up() )
+        td -> debuff.reckoning -> expire();
     }
   }
 
@@ -983,6 +992,17 @@ public:
   {
     if ( cd_waste ) cd_waste -> add( cd, ab::time_to_execute );
     ab::update_ready( cd );
+  }
+
+  virtual void assess_damage( result_amount_type typ, action_state_t* s ) override
+  {
+    ab::assess_damage( typ, s );
+
+    paladin_td_t* td = this -> td( s -> target );
+    if ( td -> debuff.execution_sentence -> check() )
+    {
+      td -> debuff.execution_sentence -> accumulate_damage( s );
+    }
   }
 };
 

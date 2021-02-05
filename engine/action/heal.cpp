@@ -14,21 +14,18 @@
 #include "sim/sc_sim.hpp"
 #include "util/rng.hpp"
 
-heal_t::heal_t(util::string_view token,
-  player_t* p) :
-  heal_t(token, p, spell_data_t::nil())
+heal_t::heal_t( util::string_view name, player_t* p ) : heal_t( name, p, spell_data_t::nil() )
 {
 
 }
 
-heal_t::heal_t(util::string_view token,
-  player_t* p,
-  const spell_data_t* s) :
-  spell_base_t(ACTION_HEAL, token, p, s),
-  group_only(),
-  base_pct_heal(),
-  tick_pct_heal(),
-  heal_gain(p -> get_gain(name()))
+heal_t::heal_t( util::string_view name, player_t* p, const spell_data_t* s )
+  : spell_base_t( ACTION_HEAL, name, p, s ),
+    group_only(),
+    record_healing(),
+    base_pct_heal(),
+    tick_pct_heal(),
+    heal_gain( p->get_gain( name ) )
 {
   if (sim->heal_target && target == sim->target)
     target = sim->heal_target;
@@ -43,7 +40,7 @@ heal_t::heal_t(util::string_view token,
 
   for (size_t i = 1; i <= data().effect_count(); i++)
   {
-    parse_effect_data(data().effectN(i));
+    parse_heal_effect_data(data().effectN(i));
   }
 }
 
@@ -54,10 +51,8 @@ void heal_t::activate()
     });
 }
 
-void heal_t::parse_effect_data(const spelleffect_data_t& e)
+void heal_t::parse_heal_effect_data(const spelleffect_data_t& e)
 {
-  base_t::parse_effect_data(e);
-
   if ( e.ok() )
   {
     if ( e.type() == E_HEAL_PCT )
@@ -69,6 +64,13 @@ void heal_t::parse_effect_data(const spelleffect_data_t& e)
       tick_pct_heal = e.percent();
     }
   }
+}
+
+void heal_t::init()
+{
+  base_t::init();
+
+  record_healing = player->record_healing();
 }
 
 double heal_t::composite_da_multiplier(const action_state_t* s) const
@@ -232,7 +234,7 @@ void heal_t::assess_damage(result_amount_type heal_type, action_state_t* s)
     }
   }
 
-  if (player->record_healing())
+  if (record_healing)
   {
     stats->add_result(s->result_amount, s->result_total, (direct_tick ? result_amount_type::HEAL_OVER_TIME : heal_type),
       s->result, s->block_result, s->target);

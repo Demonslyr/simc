@@ -14,6 +14,7 @@ potion=spectral_intellect
 flask=spectral_flask_of_power
 food=feast_of_gluttonous_hedonism
 augmentation=veiled
+temporary_enchant=main_hand:shadowcore_oil
 
 # This default action priority list is automatically created based on your character.
 # It is a attempt to provide you with a action list that is both simple and practicable,
@@ -54,7 +55,7 @@ actions+=/siphon_life,cycle_targets=1,if=active_enemies>1,target_if=dot.siphon_l
 actions+=/call_action_list,name=covenant,if=!covenant.necrolord
 actions+=/corruption,if=active_enemies<4-(talent.sow_the_seeds.enabled|talent.siphon_life.enabled)&dot.corruption.remains<2
 actions+=/corruption,cycle_targets=1,if=active_enemies<4-(talent.sow_the_seeds.enabled|talent.siphon_life.enabled),target_if=dot.corruption.remains<2
-actions+=/phantom_singularity,if=covenant.necrolord|covenant.night_fae|covenant.kyrian|covenant.none
+actions+=/phantom_singularity
 actions+=/malefic_rapture,if=soul_shard>4
 actions+=/call_action_list,name=darkglare_prep,if=covenant.venthyr&(cooldown.impending_catastrophe.ready|dot.impending_catastrophe_dot.ticking)&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity.enabled)
 actions+=/call_action_list,name=darkglare_prep,if=(covenant.necrolord|covenant.kyrian|covenant.none)&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity.enabled)
@@ -138,7 +139,7 @@ legs=purge_protocol_legwraps,id=180107,bonus_id=6807/1498/6646
 feet=stradamas_misplaced_slippers,id=178756,bonus_id=6807/1498/6646
 finger1=death_gods_signet,id=179355,bonus_id=6807/1498/6646,enchant=tenet_of_haste
 finger2=arachnid_cipher_ring,id=178933,bonus_id=6807/1498/6646,enchant=tenet_of_haste
-trinket1=inscrutable_quantum_device,id=179350,bonus_id=6807/1498/6646,enchant=shadowcore_oil
+trinket1=inscrutable_quantum_device,id=179350,bonus_id=6807/1498/6646
 trinket2=empyreal_ordnance,id=180117,bonus_id=6807/1498/6646
 main_hand=nathrian_ferula,id=178829,bonus_id=6807/1498/6646,enchant=sinful_revelation
 

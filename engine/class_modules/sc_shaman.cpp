@@ -84,7 +84,9 @@ static std::vector<player_t*>& __check_distance_targeting( const action_t* actio
   size_t num_targets  = sim->target_non_sleeping_list.size();
   size_t max_attempts = static_cast<size_t>(
       std::min( ( num_targets - 1.0 ) * 2.0, 30.0 ) );  // With a lot of targets this can get pretty high. Cap it at 30.
-  size_t local_attempts = 0, attempts = 0, chain_number = 1;
+  size_t local_attempts = 0;
+  size_t attempts = 0;
+  size_t chain_number = 1;
   std::vector<player_t*> targets_left_to_try(
       sim->target_non_sleeping_list.data() );  // This list contains members of a vector that haven't been tried yet.
   auto position = std::find( targets_left_to_try.begin(), targets_left_to_try.end(), target );
@@ -102,7 +104,7 @@ static std::vector<player_t*>& __check_distance_targeting( const action_t* actio
     attempts++;
     if ( attempts >= max_attempts )
       stop_trying = true;
-    while ( targets_left_to_try.size() > 0 && local_attempts < num_targets * 2 )
+    while ( !targets_left_to_try.empty() && local_attempts < num_targets * 2 )
     {
       player_t* possibletarget;
       size_t rng_target = static_cast<size_t>(
@@ -706,7 +708,7 @@ public:
 
   // Weapon Enchants
   shaman_attack_t* windfury_mh;
-  shaman_spell_t* flametongue_oh, *flametongue_mh;
+  shaman_spell_t* flametongue;
   shaman_attack_t* hailstorm;
 
   // Elemental Spirits attacks
@@ -716,7 +718,7 @@ public:
   shaman_t( sim_t* sim, util::string_view name, race_e r = RACE_TAUREN )
     : player_t( sim, SHAMAN, name, r ),
       lava_surge_during_lvb( false ),
-      lotfw_counter( 0u ),
+      lotfw_counter( 0U ),
       raptor_glyph( false ),
       action(),
       pet( this ),
@@ -756,8 +758,7 @@ public:
 
     // Weapon Enchants
     windfury_mh = nullptr;
-    flametongue_mh = nullptr;
-    flametongue_oh = nullptr;
+    flametongue = nullptr;
     hailstorm   = nullptr;
 
     // Elemental Spirits attacks
@@ -779,7 +780,7 @@ public:
   void summon_storm_elemental( timespan_t duration );
 
   // triggers
-  void trigger_maelstrom_gain( double base, gain_t* gain = nullptr );
+  void trigger_maelstrom_gain( double maelstrom_gain, gain_t* gain = nullptr );
   void trigger_windfury_weapon( const action_state_t* );
   void trigger_maelstrom_weapon( const action_state_t* );
   void trigger_flametongue_weapon( const action_state_t* );
@@ -1323,7 +1324,7 @@ public:
 
       double evaluate() override
       {
-        if ( cd_.size() == 0 )
+        if ( cd_.empty() )
           return 0;
 
         timespan_t min_cd = cd_[ 0 ]->remains();
@@ -3002,7 +3003,7 @@ struct elemental_overload_spell_t : public shaman_spell_t
 
   void snapshot_internal( action_state_t* s, unsigned flags, result_amount_type rt ) override
   {
-    base_t::snapshot_internal( s, flags, rt );
+    shaman_spell_t::snapshot_internal( s, flags, rt );
 
     cast_state( s )->exec_type = parent->exec_type;
   }
@@ -3269,7 +3270,9 @@ struct lava_lash_t : public shaman_attack_t
       m *= 1.0 + p()->buff.hot_hand->data().effectN( 1 ).percent();
     }
 
-    if ( weapon->buff_type == FLAMETONGUE_IMBUE )
+    // Flametongue imbue only increases Lava Lash damage if it is imbued on the off-hand
+    // weapon
+    if ( p()->off_hand_weapon.buff_type == FLAMETONGUE_IMBUE )
     {
       m *= 1.0 + data().effectN( 2 ).percent();
     }
@@ -3568,13 +3571,39 @@ struct sundering_t : public shaman_attack_t
 
 struct weapon_imbue_t : public shaman_spell_t
 {
-  slot_e slot;
+  std::string slot_str;
+  slot_e slot, default_slot;
   imbue_e imbue;
 
-  weapon_imbue_t( const std::string& name, shaman_t* player, const spell_data_t* spell ) :
-    shaman_spell_t( name, player, spell ), slot( SLOT_INVALID ), imbue( IMBUE_NONE )
+  weapon_imbue_t( const std::string& name, shaman_t* player, slot_e d_, const spell_data_t* spell, const std::string& options_str ) :
+    shaman_spell_t( name, player, spell ), slot( SLOT_INVALID ), default_slot( d_ ), imbue( IMBUE_NONE )
   {
     harmful = false;
+
+    add_option( opt_string( "slot", slot_str ) );
+
+    parse_options( options_str );
+
+    if ( slot_str.empty() )
+    {
+      slot = default_slot;
+    }
+    else
+    {
+      slot = util::parse_slot_type( slot_str );
+    }
+  }
+
+  void init_finished() override
+  {
+    shaman_spell_t::init_finished();
+
+    if ( player->items[ slot ].active() &&
+         player->items[ slot ].parsed.temporary_enchant_id > 0 )
+    {
+      sim->error( "Player {} has a temporary enchant on slot {}, disabling {}",
+        player->name(), util::slot_type_string( slot ), name() );
+    }
   }
 
   void execute() override
@@ -3609,61 +3638,44 @@ struct weapon_imbue_t : public shaman_spell_t
 };
 
 // Windfury Imbue =========================================================
+
 struct windfury_weapon_t : public weapon_imbue_t
 {
   windfury_weapon_t( shaman_t* player, const std::string& options_str ) :
-    weapon_imbue_t( "windfury_weapon", player, player->find_specialization_spell( "Windfury Weapon" ) )
+    weapon_imbue_t( "windfury_weapon", player, SLOT_MAIN_HAND,
+                    player->find_specialization_spell( "Windfury Weapon" ), options_str )
   {
-    parse_options( options_str );
-
-    slot = SLOT_MAIN_HAND;
     imbue = WINDFURY_IMBUE;
 
-    add_child( player->windfury_mh );
+    if ( slot == SLOT_MAIN_HAND )
+    {
+      add_child( player->windfury_mh );
+    }
+    // Technically, you can put Windfury on the off-hand slot but it disables the proc
+    else if ( slot == SLOT_OFF_HAND )
+    {
+      ;
+    }
+    else
+    {
+      sim->error( "{} invalid windfury slot '{}'", player->name(), slot_str );
+    }
   }
 };
 
 // Flametongue Imbue =========================================================
+
 struct flametongue_weapon_t : public weapon_imbue_t
 {
   flametongue_weapon_t( shaman_t* player, const std::string& options_str ) :
-    weapon_imbue_t( "flametongue_weapon", player, player->find_spell( "Flametongue Weapon" ) )
+    weapon_imbue_t( "flametongue_weapon", player,
+                    SLOT_OFF_HAND, player->find_spell( "Flametongue Weapon" ), options_str )
   {
-    std::string slot_str;
-
-    add_option( opt_string( "slot", slot_str ) );
-
-    parse_options( options_str );
-
     imbue = FLAMETONGUE_IMBUE;
 
-    /*
-    std::array<std::unique_ptr<option_t>, 1> options { {
-      opt_string( "slot", slot_str )
-    } };
-
-    opts::parse( sim, "player", options, options_str,
-      []( opts::parse_status, util::string_view, util::string_view ) {
-        return opts::parse_status::OK;
-    } );
-    */
-
-    if ( slot_str.empty() )
+    if ( slot == SLOT_MAIN_HAND || slot == SLOT_OFF_HAND )
     {
-      slot = SLOT_OFF_HAND;
-    }
-    else
-    {
-      slot = util::parse_slot_type( slot_str );
-    }
-
-    if ( slot == SLOT_OFF_HAND )
-    {
-      add_child( player->flametongue_oh );
-    }
-    else if ( slot == SLOT_MAIN_HAND )
-    {
-      add_child( player->flametongue_mh );
+      add_child( player->flametongue );
     }
     else
     {
@@ -4186,7 +4198,7 @@ struct lava_burst_overload_t : public elemental_overload_spell_t
   unsigned impact_flags;
   lava_burst_type type;
 
-  static const std::string action_name( const std::string& suffix )
+  static std::string action_name( const std::string& suffix )
   {
     return !suffix.empty() ? "lava_burst_overload_" + suffix : "lava_burst_overload";
   }
@@ -4672,7 +4684,7 @@ struct lava_burst_t : public shaman_spell_t
     {
       p()->buff.primordial_wave->expire();
       p()->action.lava_burst_pw->set_target( execute_state->target );
-      if ( p()->action.lava_burst_pw->target_list().size() )
+      if ( !p()->action.lava_burst_pw->target_list().empty() )
       {
         p()->action.lava_burst_pw->schedule_execute();
       }
@@ -4812,15 +4824,15 @@ struct lightning_bolt_t : public shaman_spell_t
       double roll = rng().real();
       if ( roll >= 0.98 )
       {
-        n += 3u;
+        n += 3U;
       }
       else if ( roll >= 0.8 )
       {
-        n += 2u;
+        n += 2U;
       }
       else
       {
-        n += 1u;
+        n += 1U;
       }
     }
 
@@ -4885,7 +4897,7 @@ struct lightning_bolt_t : public shaman_spell_t
     {
       p()->buff.primordial_wave->expire();
       p()->action.lightning_bolt_pw->set_target( target );
-      if ( p()->action.lightning_bolt_pw->target_list().size() )
+      if ( !p()->action.lightning_bolt_pw->target_list().empty() )
       {
         p()->action.lightning_bolt_pw->execute();
       }
@@ -5188,7 +5200,7 @@ struct earthquake_t : public shaman_spell_t
           .action( rumble ) );
 
     if ( rng().roll( p()->conduit.shake_the_foundations.percent() ) &&
-         rumble->target_list().size() )
+         !rumble->target_list().empty() )
     {
       auto t = rumble->target_list()[ static_cast<unsigned>( rng().range( 0,
             as<double>( rumble->target_list().size() ) ) ) ];
@@ -5733,7 +5745,7 @@ struct ascendance_t : public shaman_spell_t
     if ( lvb )
     {
       lvb->set_target( player->target );
-      if ( lvb->target_list().size() )
+      if ( !lvb->target_list().empty() )
       {
         lvb->execute();
       }
@@ -5877,7 +5889,7 @@ struct static_discharge_tick_t : public shaman_spell_t
 
   void execute() override
   {
-    if ( target_list().size() == 0 )
+    if ( target_list().empty() )
     {
       sim->print_debug( "Static Discharge Tick without an active FS" );
       return;
@@ -7167,7 +7179,7 @@ std::unique_ptr<expr_t> shaman_t::create_expression( util::string_view name )
     }
 
     const pet_t* p = nullptr;
-    auto pe        = require_primal || talent.primal_elementalist->ok() == true;
+    auto pe        = require_primal || talent.primal_elementalist->ok();
     switch ( et )
     {
       case elemental::FIRE:
@@ -7610,7 +7622,7 @@ void shaman_t::summon_feral_spirits( timespan_t duration )
   // No elemental spirits selected, just summon normal pets and exit
   if ( !talent.elemental_spirits->ok() )
   {
-    pet.spirit_wolves.spawn( duration, 2u );
+    pet.spirit_wolves.spawn( duration, 2U );
     return;
   }
 
@@ -8011,7 +8023,9 @@ void shaman_t::trigger_windfury_weapon( const action_state_t* state )
     return;
   }
 
-  if ( main_hand_weapon.buff_type != WINDFURY_IMBUE )
+  // Note, applying Windfury-imbue to off-hand disables procs in game.
+  if ( main_hand_weapon.buff_type != WINDFURY_IMBUE ||
+      off_hand_weapon.buff_type == WINDFURY_IMBUE )
   {
     return;
   }
@@ -8117,19 +8131,9 @@ void shaman_t::trigger_flametongue_weapon( const action_state_t* state )
     return;
   }
 
-  if ( main_hand_weapon.buff_type == FLAMETONGUE_IMBUE )
-  {
-    flametongue_mh->set_target( state->target );
-    flametongue_mh->execute();
-    attack->proc_ft->occur();
-  }
-
-  if ( off_hand_weapon.buff_type == FLAMETONGUE_IMBUE )
-  {
-    flametongue_oh->set_target( state->target );
-    flametongue_oh->execute();
-    attack->proc_ft->occur();
-  }
+  flametongue->set_target( state->target );
+  flametongue->execute();
+  attack->proc_ft->occur();
 }
 
 void shaman_t::trigger_lightning_shield( const action_state_t* state )
@@ -8536,11 +8540,13 @@ std::string shaman_t::default_temporary_enchant() const
     case SHAMAN_ELEMENTAL:
       if ( true_level >= 60 )
         return "main_hand:shadowcore_oil";
+      SC_FALLTHROUGH;
     case SHAMAN_ENHANCEMENT:
       return "disabled";
     case SHAMAN_RESTORATION:
       if ( true_level >= 60 )
         return "main_hand:shadowcore_oil";
+      SC_FALLTHROUGH;
     default:
       return "disabled";
   }
@@ -8655,7 +8661,8 @@ void shaman_t::init_action_list_elemental()
                                   "if=(spell_targets.chain_lightning>1)&(!dot.flame_shock.refreshable)" );
     se_single_target->add_action(
         this, "Earth Shock",
-        "if=spell_targets.chain_lightning<2&maelstrom>=60&(buff.wind_gust.stack<20|maelstrom>90)" );
+        "if=spell_targets.chain_lightning<2&maelstrom>=60&(buff.wind_gust.stack<20|maelstrom>90)|(runeforge.echoes_of_"
+        "great_sundering.equipped&!buff.echoes_of_great_sundering.up)" );
     se_single_target->add_action( this, "Lightning Bolt",
                                "if=(buff.stormkeeper.remains<1.1*gcd*buff.stormkeeper.stack|buff.stormkeeper.up&buff."
                                "master_of_the_elements.up)" );
@@ -8890,7 +8897,7 @@ void shaman_t::init_action_list_enhancement()
   single->add_action("fae_transfusion");
   single->add_action(this, "Lightning Bolt", "if=buff.stormkeeper.up");
   single->add_talent(this, "Elemental Blast", "if=buff.maelstrom_weapon.stack>=5");
-  single->add_action("chain_harvest,if=buff.maelstrom_weapon.stack>=5");
+  single->add_action("chain_harvest,if=buff.maelstrom_weapon.stack>=5&raid_event.adds.in>=90");
   single->add_action(this, "Lightning Bolt", "if=buff.maelstrom_weapon.stack=10");
   single->add_action(this, "Lava Lash", "if=buff.hot_hand.up|(runeforge.primal_lava_actuators.equipped&buff.primal_lava_actuators.stack>6)");
   single->add_action(this, "Stormstrike");
@@ -9017,8 +9024,7 @@ void shaman_t::init_action_list()
   {
     windfury_mh = new windfury_attack_t( "windfury_attack", this, find_spell( 25504 ), &( main_hand_weapon ) );
 
-    flametongue_mh = new flametongue_weapon_spell_t( "flametongue_attack_mh", this, &( main_hand_weapon ) );
-    flametongue_oh = new flametongue_weapon_spell_t( "flametongue_attack", this, &( off_hand_weapon ) );
+    flametongue = new flametongue_weapon_spell_t( "flametongue_attack", this, &( off_hand_weapon ) );
 
     icy_edge = new icy_edge_attack_t( "icy_edge", this, &( main_hand_weapon ) );
 
@@ -9357,7 +9363,7 @@ void shaman_t::reset()
     elem->reset();
 
   vesper_totem = nullptr;
-  lotfw_counter = 0u;
+  lotfw_counter = 0U;
 }
 
 // shaman_t::merge ==========================================================
@@ -9762,7 +9768,7 @@ public:
         name_str = util::encode_html( name_str );
       }
 
-      std::string row_class_str = "";
+      std::string row_class_str;
       if ( ++n & 1 )
         row_class_str = " class=\"odd\"";
 
@@ -9801,7 +9807,7 @@ public:
                       os << "<div class=\"clear\"></div>\n";
                     }
     */
-    if ( p.cd_waste_exec.size() > 0 )
+    if ( !p.cd_waste_exec.empty() )
     {
       os << "\t\t\t\t\t<h3 class=\"toggle open\">Cooldown waste details</h3>\n"
          << "\t\t\t\t\t<div class=\"toggle-content\">\n";

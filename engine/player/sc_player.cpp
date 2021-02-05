@@ -11,8 +11,8 @@
 #include "action/dot.hpp"
 #include "action/heal.hpp"
 #include "action/residual_action.hpp"
-#include "action/sc_action_state.hpp"
 #include "action/sc_action.hpp"
+#include "action/sc_action_state.hpp"
 #include "action/sequence.hpp"
 #include "action/snapshot_stats.hpp"
 #include "action/spell.hpp"
@@ -22,8 +22,8 @@
 #include "dbc/azerite.hpp"
 #include "dbc/dbc.hpp"
 #include "dbc/item_set_bonus.hpp"
-#include "dbc/specialization_spell.hpp"
 #include "dbc/rank_spells.hpp"
+#include "dbc/specialization_spell.hpp"
 #include "dbc/temporary_enchant.hpp"
 #include "item/item.hpp"
 #include "item/special_effect.hpp"
@@ -40,9 +40,9 @@
 #include "player/player_scaling.hpp"
 #include "player/sample_data_helper.hpp"
 #include "player/set_bonus.hpp"
+#include "player/soulbinds.hpp"
 #include "player/spawner_base.hpp"
 #include "player/stats.hpp"
-#include "player/soulbinds.hpp"
 #include "player/unique_gear.hpp"
 #include "sim/benefit.hpp"
 #include "sim/event.hpp"
@@ -57,45 +57,18 @@
 #include "util/rng.hpp"
 #include "util/util.hpp"
 
+#include <cctype>
 #include <cerrno>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <sstream>
-#include <cctype>
 #include <stdexcept>
-#include <iostream>
+#include <utility>
+
 
 namespace
 {
-
-  // Handy Actions ============================================================
-
-  struct wait_action_base_t : public action_t
-  {
-    wait_action_base_t(player_t* player, const std::string& name) :
-      action_t(ACTION_OTHER, name, player, spell_data_t::nil())
-    {
-      trigger_gcd = timespan_t::zero();
-      interrupt_auto_attack = false;
-    }
-
-    virtual void execute() override
-    {
-      player->iteration_waiting_time += time_to_execute;
-    }
-  };
-
-  // Wait For Cooldown Action =================================================
-
-  struct wait_for_cooldown_t : public wait_action_base_t
-  {
-    cooldown_t* wait_cd;
-    action_t* a;
-    wait_for_cooldown_t(player_t* player, const std::string& cd_name);
-    virtual bool usable_moving() const override { return a->usable_moving(); }
-    virtual timespan_t execute_time() const override;
-  };
-
 
 bool prune_specialized_execute_actions_internal( std::vector<action_t*>& apl, execute_type e,
   std::vector<std::vector<action_t*>*>& visited )
@@ -163,7 +136,7 @@ bool prune_specialized_execute_actions_internal( std::vector<action_t*>& apl, ex
     }
   }
 
-  return apl.size() > 0;
+  return !apl.empty();
 }
 
 bool prune_specialized_execute_actions( std::vector<action_t*>& apl, execute_type e )
@@ -2005,7 +1978,7 @@ void player_t::create_special_effects()
     special_effect_t effect( this );
     unique_gear::initialize_special_effect( effect, set_bonus->spell_id );
 
-    if ( effect.custom_init_object.size() == 0 )
+    if ( effect.custom_init_object.empty() )
     {
       continue;
     }
@@ -2020,7 +1993,7 @@ void player_t::create_special_effects()
     special_effect_t effect( this );
 
     unique_gear::initialize_special_effect( effect, 327942 );
-    if ( effect.custom_init_object.size() )
+    if ( !effect.custom_init_object.empty() )
     {
       special_effects.push_back( new special_effect_t( effect ) );
     }
@@ -2115,7 +2088,7 @@ void player_t::init_resources( bool force )
   // Only collect pet resource timelines if they get reported separately
   if ( !is_pet() || sim->report_pets_separately )
   {
-    if ( collected_data.resource_timelines.size() == 0 )
+    if ( collected_data.resource_timelines.empty() )
     {
       for ( resource_e resource = RESOURCE_NONE; resource < RESOURCE_MAX; ++resource )
       {
@@ -2186,39 +2159,7 @@ void player_t::init_target()
   default_target = target;
 }
 
-std::string player_t::init_use_item_actions( const std::string& append )
-{
-  std::string buffer;
-
-  for ( auto& item : items )
-  {
-    if ( item.slot == SLOT_HANDS )
-      continue;
-
-    if ( item.has_use_special_effect() )
-    {
-      buffer += "/use_item,slot=";
-      buffer += item.slot_name();
-      if ( !append.empty() )
-      {
-        buffer += append;
-      }
-    }
-  }
-  if ( items[ SLOT_HANDS ].has_use_special_effect() )
-  {
-    buffer += "/use_item,slot=";
-    buffer += items[ SLOT_HANDS ].slot_name();
-    if ( !append.empty() )
-    {
-      buffer += append;
-    }
-  }
-
-  return buffer;
-}
-
-std::vector<std::string> player_t::get_item_actions( const std::string& options )
+std::vector<std::string> player_t::get_item_actions()
 {
   std::vector<std::string> actions;
 
@@ -2229,29 +2170,11 @@ std::vector<std::string> player_t::get_item_actions( const std::string& options 
     // always preferred over an Addon.
     if ( item.has_special_effect( SPECIAL_EFFECT_SOURCE_ITEM, SPECIAL_EFFECT_USE ) )
     {
-      std::string action_string = "use_item,slot=";
-      action_string += item.slot_name();
-      if ( !options.empty() )
-      {
-        if ( options[ 0 ] != ',' )
-        {
-          action_string += ',';
-        }
-        action_string += options;
-      }
-
-      actions.push_back( action_string );
+      actions.push_back( fmt::format( "use_item,slot={}", item.slot_name() ) );
     }
   }
 
   return actions;
-}
-
-std::string player_t::init_use_profession_actions( const std::string& /* append */ )
-{
-  std::string buffer;
-
-  return buffer;
 }
 
 std::vector<std::string> player_t::get_profession_actions()
@@ -2259,44 +2182,6 @@ std::vector<std::string> player_t::get_profession_actions()
   std::vector<std::string> actions;
 
   return actions;
-}
-
-std::string player_t::init_use_racial_actions( const std::string& append )
-{
-  std::string buffer;
-  bool race_action_found = false;
-
-  switch ( race )
-  {
-    case RACE_ORC:
-      buffer += "/blood_fury";
-      race_action_found = true;
-      break;
-    case RACE_TROLL:
-      buffer += "/berserking";
-      race_action_found = true;
-      break;
-    case RACE_BLOOD_ELF:
-      buffer += "/arcane_torrent";
-      race_action_found = true;
-      break;
-    case RACE_LIGHTFORGED_DRAENEI:
-      buffer += "/lights_judgment";
-      race_action_found = true;
-      break;
-    case RACE_VULPERA:
-      buffer += "/bag_of_tricks";
-      race_action_found = true;
-    default:
-      break;
-  }
-
-  if ( race_action_found && !append.empty() )
-  {
-    buffer += append;
-  }
-
-  return buffer;
 }
 
 std::vector<std::string> player_t::get_racial_actions()
@@ -2550,7 +2435,7 @@ void player_t::init_stats()
   }
   if ( !is_pet() || sim->report_pets_separately )
   {
-    if ( collected_data.stat_timelines.size() == 0 )
+    if ( collected_data.stat_timelines.empty() )
     {
       for ( stat_e stat : stat_timelines )
       {
@@ -3001,7 +2886,7 @@ void player_t::init_assessors()
   // Logging and debug .. Technically, this should probably be in action_t::assess_damage, but we
   // don't need this piece of code for the vast majority of sims, so it makes sense to yank it out
   // completely from there, and only conditionally include it if logging/debugging is enabled.
-  if ( sim->log || sim->debug || sim->debug_seed.size() > 0 )
+  if ( sim->log || sim->debug || !sim->debug_seed.empty() )
   {
     assessor_out_damage.add( assessor::LOG, [this]( result_amount_type type, action_state_t* state ) {
       if ( sim->debug )
@@ -3318,7 +3203,7 @@ void player_t::create_buffs()
       auto memory_of_lucid_dreams = find_azerite_essence( "Memory of Lucid Dreams" );
       buffs.lucid_dreams = make_buff<stat_buff_t>( this, "lucid_dreams", find_spell( 298343 ) );
       buffs.lucid_dreams->add_stat( STAT_VERSATILITY_RATING,
-        memory_of_lucid_dreams.spell_ref( 3u, essence_spell::UPGRADE, essence_type::MINOR ).effectN( 1 ).average(
+        memory_of_lucid_dreams.spell_ref( 3U, essence_spell::UPGRADE, essence_type::MINOR ).effectN( 1 ).average(
           memory_of_lucid_dreams.item() ) );
       buffs.lucid_dreams->set_quiet( memory_of_lucid_dreams.rank() < 3 );
 
@@ -3343,10 +3228,10 @@ void player_t::create_buffs()
       auto ripple_in_space = find_azerite_essence( "Ripple in Space" );
       buffs.reality_shift = make_buff<stat_buff_t>( this, "reality_shift", find_spell( 302916 ) );
       buffs.reality_shift->add_stat( convert_hybrid_stat( STAT_STR_AGI_INT ),
-        ripple_in_space.spell_ref(1u, essence_type::MINOR).effectN( 2 ).average(
+        ripple_in_space.spell_ref(1U, essence_type::MINOR).effectN( 2 ).average(
           ripple_in_space.item() ) );
       buffs.reality_shift->set_duration( find_spell( 302952 )->duration()
-        + timespan_t::from_seconds( ripple_in_space.spell_ref( 2u, essence_spell::UPGRADE, essence_type::MINOR ).effectN( 1 ).base_value() / 1000 ) );
+        + timespan_t::from_seconds( ripple_in_space.spell_ref( 2U, essence_spell::UPGRADE, essence_type::MINOR ).effectN( 1 ).base_value() / 1000 ) );
       buffs.reality_shift->set_cooldown( find_spell( 302953 )->duration() );
 
       buffs.windfury_totem = make_buff<buff_t>( this, "windfury_totem", find_spell( 327942 ) )
@@ -4608,7 +4493,7 @@ void player_t::sequence_add_wait( timespan_t amount, timespan_t ts )
     {
       if ( in_combat )
       {
-        if ( collected_data.action_sequence.size() &&
+        if ( !collected_data.action_sequence.empty() &&
              collected_data.action_sequence.back().wait_time > timespan_t::zero() )
           collected_data.action_sequence.back().wait_time += amount;
         else
@@ -4769,7 +4654,7 @@ void player_t::combat_end()
   // In turn, lazily finding the parent actor here ensures that the performance hit on the init
   // process is minimal (no need for locks).
   if ( parent == nullptr && !is_pet() && !is_enemy() && sim->parent != nullptr &&
-      sim->parent->initialized == true && sim->thread_index > 0 )
+      sim->parent->initialized && sim->thread_index > 0 )
   {
     // NOTE NOTE NOTE: This search can no longer be run based on find_player() because it uses
     // actor_list. Ever since pet_spawner support, the actor_list of the parent sim can (and will)
@@ -4993,7 +4878,8 @@ void merge( player_t& left, player_t& right )
   prepare( right );
 
   // Both buff_lists are sorted, join them mergesort-style.
-  size_t i = 0, j = 0;
+  size_t i = 0;
+  size_t j = 0;
   while ( i < left.buff_list.size() && j < right.buff_list.size() )
   {
     if ( compare( left.buff_list[ i ], right.buff_list[ j ] ) )
@@ -5315,6 +5201,9 @@ void player_t::trigger_ready()
 
 void player_t::schedule_off_gcd_ready( timespan_t delta_time )
 {
+  if ( delta_time < 0_ms )
+    delta_time = rng().gauss( 100_ms, 10_ms );
+
   if ( active_off_gcd_list == nullptr )
   {
     return;
@@ -5361,6 +5250,9 @@ void player_t::schedule_off_gcd_ready( timespan_t delta_time )
 
 void player_t::schedule_cwc_ready( timespan_t delta_time )
 {
+  if ( delta_time < 0_ms )
+    delta_time = rng().gauss( 100_ms, 10_ms );
+
   if ( active_cast_while_casting_list == nullptr )
   {
     return;
@@ -6559,7 +6451,8 @@ void account_blessing_of_sacrifice( player_t& p, action_state_t* s )
 
 bool absorb_sort( absorb_buff_t* a, absorb_buff_t* b )
 {
-  double lv = a->current_value, rv = a->current_value;
+  double lv = a->current_value;
+  double rv = a->current_value;
   if ( lv == rv )
   {
     return a->name_str < b->name_str;
@@ -7056,8 +6949,6 @@ T* find_vector_member( const std::vector<T*>& list, util::string_view name )
   return nullptr;
 }
 
-// player_t::find_action_priority_list( const std::string& name ) ===========
-
 action_priority_list_t* player_t::find_action_priority_list( util::string_view name ) const
 {
   return find_vector_member( action_priority_list, name );
@@ -7321,22 +7212,6 @@ int player_t::get_action_id( util::string_view name )
 
   action_map.emplace_back( name );
   return static_cast<int>(action_map.size() - 1);
-}
-
-wait_for_cooldown_t::wait_for_cooldown_t( player_t* player, const std::string& cd_name ) :
-  wait_action_base_t( player, "wait_for_" + cd_name ),
-  wait_cd( player->get_cooldown( cd_name ) ),
-  a( player->find_action( cd_name ) )
-{
-  assert( a );
-  interrupt_auto_attack = false;
-  quiet                 = true;
-}
-
-timespan_t wait_for_cooldown_t::execute_time() const
-{
-  assert( wait_cd->duration > timespan_t::zero() );
-  return wait_cd->remains();
 }
 
 namespace
@@ -7941,20 +7816,77 @@ struct restore_mana_t : public action_t
   }
 };
 
+// Base Wait Action =========================================================
+
+struct wait_action_base_t : public action_t
+{
+  wait_action_base_t(player_t* player, util::string_view name) :
+    action_t(ACTION_OTHER, name, player, spell_data_t::nil())
+  {
+    trigger_gcd = timespan_t::zero();
+    interrupt_auto_attack = false;
+    quiet = true;
+  }
+
+  virtual void execute() override
+  {
+    player->iteration_waiting_time += time_to_execute;
+  }
+};
+
+// Wait For Cooldown Action =================================================
+
+struct wait_for_cooldown_t : public wait_action_base_t
+{
+  cooldown_t* wait_cd;
+  action_t* a;
+
+  wait_for_cooldown_t( player_t* player, util::string_view options_str ) :
+    wait_action_base_t( player, "wait_for_cooldown" )
+  {
+    std::string cd_name;
+    add_option( opt_string( "name", cd_name ) );
+    parse_options( options_str );
+
+    wait_cd = player->get_cooldown( cd_name );
+    a = player->find_action( cd_name );
+  }
+
+  bool usable_moving() const override
+  {
+    return !a || a->usable_moving();
+  }
+
+  timespan_t execute_time() const override
+  {
+    // Ensures that the cooldown exists and has been given a default duration
+    assert( wait_cd->duration > timespan_t::zero() );
+    return wait_cd->remains();
+  }
+
+  bool ready() override
+  {
+    // Don't attempt to wait for a cooldown that is already up
+    if ( wait_cd -> is_ready() )
+      return false;
+    return wait_action_base_t::ready();
+  }
+};
+
+
 // Wait Fixed Action ========================================================
 
 struct wait_fixed_t : public wait_action_base_t
 {
   std::unique_ptr<expr_t> time_expr;
 
-  wait_fixed_t( player_t* player, util::string_view options_str ) : wait_action_base_t( player, "wait" ), time_expr()
+  wait_fixed_t( player_t* player, util::string_view options_str ) :
+    wait_action_base_t( player, "wait" ), time_expr()
   {
     std::string sec_str = "1.0";
 
     add_option( opt_string( "sec", sec_str ) );
     parse_options( options_str );
-    interrupt_auto_attack = false;  // Probably shouldn't interrupt autoattacks while waiting.
-    quiet                 = true;
 
     time_expr = expr_t::parse( this, sec_str );
     if ( !time_expr )
@@ -7978,10 +7910,9 @@ struct wait_fixed_t : public wait_action_base_t
 // wait until actions *before* this wait are ready.
 struct wait_until_ready_t : public wait_fixed_t
 {
-  wait_until_ready_t( player_t* player, util::string_view options_str ) : wait_fixed_t( player, options_str )
+  wait_until_ready_t( player_t* player, util::string_view options_str ) :
+    wait_fixed_t( player, options_str )
   {
-    interrupt_auto_attack = false;
-    quiet                 = true;
   }
 
   timespan_t execute_time() const override
@@ -8387,7 +8318,7 @@ struct use_items_t : public action_t
 
     // No use_item sub-actions created here, so this action does not need to execute ever. The
     // parent init() call below will filter it out from the "foreground action list".
-    if ( use_actions.size() == 0 )
+    if ( use_actions.empty() )
     {
       background = true;
     }
@@ -8433,7 +8364,7 @@ struct use_items_t : public action_t
     custom_slots = true;
 
     // If slots= option is given, presume that at aleast one of those slots is a valid slot name
-    return priority_slots.size() > 0;
+    return !priority_slots.empty();
   }
 
   // Creates "use_item" actions for all usable special effects on the actor. Note that the creation
@@ -9061,19 +8992,19 @@ player_e armory2_parse_player_type( util::string_view class_name )
 /**
  * New armory format used in worldofwarcraft.com / www.wowchina.com
  */
-bool player_t::parse_talents_armory2( util::string_view talents_url )
+bool player_t::parse_talents_armory2( util::string_view talent_url )
 {
-  auto split = util::string_split<util::string_view>( talents_url, "#/=" );
+  auto split = util::string_split<util::string_view>( talent_url, "#/=" );
   if ( split.size() < 5 )
   {
-    sim->error( "Player {} has malformed talent url '{}'", name(), talents_url );
+    sim->error( "Player {} has malformed talent url '{}'", name(), talent_url );
     return false;
   }
 
   // Sanity check that second to last split is "talents"
   if ( !util::str_compare_ci( split[ split.size() - 2 ], "talents" ) )
   {
-    sim->error( "Player {} has malformed talent url '{}'", name(), talents_url );
+    sim->error( "Player {} has malformed talent url '{}'", name(), talent_url );
     return false;
   }
 
@@ -9087,16 +9018,15 @@ bool player_t::parse_talents_armory2( util::string_view talents_url )
 
   if ( player_type == PLAYER_NONE || type != player_type )
   {
-    sim->error( "Player {} has malformed talent url '{}': expected class '{}', got '{}'", name(), talents_url,
-                 util::player_type_string( type ), split[ OFFSET_CLASS ] );
+    sim->error( "Player {} has malformed talent url '{}': expected class '{}', got '{}'", name(), talent_url,
+                util::player_type_string( type ), split[ OFFSET_CLASS ] );
     return false;
   }
 
   if ( spec_type == SPEC_NONE || specialization() != spec_type )
   {
-    sim->error( "Player {} has malformed talent url '{}': expected specialization '{}', got '{}'", name(),
-                 talents_url, dbc::specialization_string( specialization() ),
-                 split[ OFFSET_SPEC ] );
+    sim->error( "Player {} has malformed talent url '{}': expected specialization '{}', got '{}'", name(), talent_url,
+                dbc::specialization_string( specialization() ), split[ OFFSET_SPEC ] );
     return false;
   }
 
@@ -9242,9 +9172,9 @@ void player_t::create_talents_wowhead()
     encoding[ 0 ] = 1;
   }
 
-  result += encoding[ 0 ] + '/';
+  result += fmt::format("{}/", encoding[ 0 ] );
   if ( encoding[ 1 ] != 0 )
-    result += encoding[ 1 ] + '/';
+    result += fmt::format("{}/", encoding[ 1 ] );
 
   talents_str = result;
 }
@@ -9308,7 +9238,8 @@ static bool parse_min_gcd( sim_t* sim, util::string_view name, util::string_view
 // TODO: HOTFIX handling
 void player_t::replace_spells()
 {
-  uint32_t class_idx, spec_index;
+  uint32_t class_idx;
+  uint32_t spec_index;
 
   if ( !dbc->spec_idx( _spec, class_idx, spec_index ) )
     return;
@@ -9592,7 +9523,7 @@ const spell_data_t* player_t::find_covenant_spell( util::string_view name ) cons
 item_runeforge_t player_t::find_runeforge_legendary( util::string_view name, bool tokenized ) const
 {
   auto entries = runeforge_legendary_entry_t::find( name, dbc->ptr, tokenized );
-  if ( entries.size() == 0 )
+  if ( entries.empty() )
   {
     return item_runeforge_t::nil();
   }
@@ -9856,9 +9787,9 @@ std::unique_ptr<expr_t> deprecated_player_expressions( player_t& player, util::s
  * Use this function for expressions which are bound to some action property (eg. target, cast_time, etc.) and not
  * just to the player itself.
  */
-std::unique_ptr<expr_t> player_t::create_action_expression( action_t&, util::string_view name )
+std::unique_ptr<expr_t> player_t::create_action_expression( action_t&, util::string_view expression_str )
 {
-  return create_expression( name );
+  return create_expression( expression_str );
 }
 
 std::unique_ptr<expr_t> player_t::create_expression( util::string_view expression_str )
@@ -10451,9 +10382,9 @@ std::unique_ptr<expr_t> player_t::create_expression( util::string_view expressio
   return sim->create_expression( expression_str );
 }
 
-std::unique_ptr<expr_t> player_t::create_resource_expression( util::string_view name_str )
+std::unique_ptr<expr_t> player_t::create_resource_expression( util::string_view expression_str )
 {
-  auto splits = util::string_split<util::string_view>( name_str, "." );
+  auto splits = util::string_split<util::string_view>( expression_str, "." );
   if ( splits.empty() )
     return nullptr;
 
@@ -10462,43 +10393,43 @@ std::unique_ptr<expr_t> player_t::create_resource_expression( util::string_view 
     return nullptr;
 
   if ( splits.size() == 1 )
-    return make_ref_expr( name_str, resources.current[ r ] );
+    return make_ref_expr( expression_str, resources.current[ r ] );
 
   if ( splits.size() == 2 )
   {
     if ( splits[ 1 ] == "deficit" )
     {
-      return make_fn_expr( name_str, [ this, r ] { return resources.max[ r ] - resources.current[ r ]; } );
+      return make_fn_expr( expression_str, [ this, r ] { return resources.max[ r ] - resources.current[ r ]; } );
     }
 
     else if ( splits[ 1 ] == "pct" || splits[ 1 ] == "percent" )
     {
       if ( r == RESOURCE_HEALTH )
       {
-        return make_mem_fn_expr( name_str, *this, &player_t::health_percentage );
+        return make_mem_fn_expr( expression_str, *this, &player_t::health_percentage );
       }
       else
       {
-        return make_fn_expr( name_str, [ this, r ] { return resources.pct( r ) * 100.0; } );
+        return make_fn_expr( expression_str, [ this, r ] { return resources.pct( r ) * 100.0; } );
       }
     }
 
     else if ( splits[ 1 ] == "max" )
-      return make_ref_expr( name_str, resources.max[ r ] );
+      return make_ref_expr( expression_str, resources.max[ r ] );
 
     else if ( splits[ 1 ] == "max_nonproc" )
-      return make_ref_expr( name_str, collected_data.buffed_stats_snapshot.resource[ r ] );
+      return make_ref_expr( expression_str, collected_data.buffed_stats_snapshot.resource[ r ] );
 
     else if ( splits[ 1 ] == "pct_nonproc" )
     {
-      return make_fn_expr( name_str, [ this, r ] {
+      return make_fn_expr( expression_str, [ this, r ] {
         return resources.current[ r ] / collected_data.buffed_stats_snapshot.resource[ r ] * 100.0;
       } );
     }
 
     else if ( splits[ 1 ] == "net_regen" )
     {
-      return make_fn_expr( name_str, [ this, r ] {
+      return make_fn_expr( expression_str, [ this, r ] {
         timespan_t now = sim->current_time();
         if ( now != timespan_t::zero() )
           return ( iteration_resource_gained[ r ] - iteration_resource_lost[ r ] ) / now.total_seconds();
@@ -10509,7 +10440,7 @@ std::unique_ptr<expr_t> player_t::create_resource_expression( util::string_view 
 
     else if ( splits[ 1 ] == "regen" )
     {
-      return make_fn_expr( name_str, [ this, r ] { return resource_regen_per_second( r ); } );
+      return make_fn_expr( expression_str, [ this, r ] { return resource_regen_per_second( r ); } );
     }
 
     else if ( util::str_prefix_ci( splits[ 1 ], "time_to_" ) )
@@ -10519,14 +10450,14 @@ std::unique_ptr<expr_t> player_t::create_resource_expression( util::string_view 
       // foo.time_to_max
       if ( util::str_in_str_ci( parts[ 2 ], "max" ) )
       {
-        return make_fn_expr( name_str, [ this, r ] {
+        return make_fn_expr( expression_str, [ this, r ] {
           return ( resources.max[ r ] - resources.current[ r ] ) / resource_regen_per_second( r );
         } );
       }
 
       // foo.time_to_x
       const double amount = util::to_double( parts[ 2 ] );
-      return make_fn_expr( name_str, [ this, r, amount ] {
+      return make_fn_expr( expression_str, [ this, r, amount ] {
         if ( resources.current[ r ] >= amount )
         {
           return timespan_t::zero().total_seconds();
@@ -10542,7 +10473,7 @@ std::unique_ptr<expr_t> player_t::create_resource_expression( util::string_view 
     }
   }
 
-  auto tail = name_str.substr(splits[ 0 ].length() + 1);
+  auto tail = expression_str.substr( splits[ 0 ].length() + 1 );
   throw std::invalid_argument(fmt::format("Unsupported resource expression '{}'.", tail));
 }
 
@@ -10550,7 +10481,7 @@ double player_t::compute_incoming_damage( timespan_t interval ) const
 {
   double amount = 0;
 
-  if ( incoming_damage.size() > 0 )
+  if ( !incoming_damage.empty() )
   {
     for ( auto i = incoming_damage.rbegin(), end = incoming_damage.rend(); i != end; ++i )
     {
@@ -10568,7 +10499,7 @@ double player_t::compute_incoming_magic_damage( timespan_t interval ) const
 {
   double amount = 0;
 
-  if ( incoming_damage.size() > 0 )
+  if ( !incoming_damage.empty() )
   {
     for ( auto i = incoming_damage.rbegin(), end = incoming_damage.rend(); i != end; ++i )
     {
@@ -10717,7 +10648,7 @@ std::string player_t::create_profile( save_e stype )
     profile_str += util::role_type_string( primary_role() ) + term;
     profile_str += "position=" + position_str + term;
 
-    if ( professions_str.size() > 0 )
+    if ( !professions_str.empty() )
     {
       profile_str += "professions=" + professions_str + term;
     }
@@ -10731,7 +10662,7 @@ std::string player_t::create_profile( save_e stype )
       profile_str += "talents=" + talents_str + term;
     }
 
-    if ( talent_overrides_str.size() > 0 )
+    if ( !talent_overrides_str.empty() )
     {
       auto splits = util::string_split<util::string_view>( talent_overrides_str, "/" );
       for ( size_t i = 0; i < splits.size(); i++ )
@@ -10808,7 +10739,7 @@ std::string player_t::create_profile( save_e stype )
       }
     }
 
-    if ( initial_resources.size() > 0 )
+    if ( !initial_resources.empty() )
     {
       profile_str += term;
       profile_str += "initial_resource=";
@@ -10823,11 +10754,11 @@ std::string player_t::create_profile( save_e stype )
       profile_str += term;
     }
 
-    if ( apl_variable_map.size() > 0 )
+    if ( !apl_variable_map.empty() )
     {
       profile_str += term;
       profile_str += "# Custom default values for APL variables." + term;
-      for ( auto v : apl_variable_map )
+      for ( const auto& v : apl_variable_map )
       {
         profile_str += "apl_variable." + v.first + "=" + v.second + term;
       }
@@ -11528,7 +11459,7 @@ void player_t::change_position( position_e new_pos )
 void player_t::register_resource_callback(resource_e resource, double value, resource_callback_function_t callback,
     bool use_pct, bool fire_once)
 {
-  resource_callback_entry_t entry{resource, value, use_pct, fire_once, false, callback};
+  resource_callback_entry_t entry{resource, value, use_pct, fire_once, false, std::move(callback)};
   resource_callbacks.push_back(entry);
   has_active_resource_callbacks = true;
   sim->print_debug("{} resource callback registered. resource={} value={} pct={} fire_once={}",
@@ -11839,7 +11770,7 @@ player_collected_data_t::player_collected_data_t( const player_t* player ) :
 
 void player_collected_data_t::reserve_memory( const player_t& p )
 {
-  unsigned size = std::min( as<unsigned>( p.sim->iterations ), 2048u );
+  unsigned size = std::min( as<unsigned>( p.sim->iterations ), 2048U );
   fight_length.reserve( size );
   // DMG
   dmg.reserve( size );
@@ -11996,7 +11927,7 @@ void player_collected_data_t::analyze( const player_t& p )
 }
 
 // This is pretty much only useful for dev debugging at this point, would need to modify to make it useful to users
-void player_collected_data_t::print_tmi_debug_csv( const sc_timeline_t* nma, const std::vector<double>& wv,
+void player_collected_data_t::print_tmi_debug_csv( const sc_timeline_t* nma, const std::vector<double>& weighted_value,
                                                    const player_t& p )
 {
   if ( !p.tmi_debug_file_str.empty() )
@@ -12012,7 +11943,7 @@ void player_collected_data_t::print_tmi_debug_csv( const sc_timeline_t* nma, con
     {
       f.printf( "%f,%f,%f,%f,%f,%f\n", timeline_dmg_taken.data()[ i ], timeline_healing_taken.data()[ i ],
                 health_changes.timeline.data()[ i ], health_changes.timeline_normalized.data()[ i ], nma->data()[ i ],
-                wv[ i ] );
+                weighted_value[ i ] );
     }
     f << "\n";
   }
@@ -12551,8 +12482,8 @@ void player_t::adjust_global_cooldown( gcd_haste_type gcd_type )
   }
 
   double delta           = new_haste / gcd_current_haste_value;
-  timespan_t remains     = readying ? readying->remains() : ( gcd_ready - sim->current_time() ),
-             new_remains = remains * delta;
+  timespan_t remains     = readying ? readying->remains() : ( gcd_ready - sim->current_time() );
+  timespan_t new_remains = remains * delta;
 
   // Don't bother processing too small (less than a millisecond) granularity changes
   if ( remains == new_remains )
@@ -12622,7 +12553,7 @@ timespan_t find_minimum_cd( const std::vector<const cooldown_t*>& list )
 // line_cooldown option, since that is APL-line specific.
 void player_t::update_off_gcd_ready()
 {
-  if ( off_gcd_cd.size() == 0 && off_gcd_icd.size() == 0 )
+  if ( off_gcd_cd.empty() && off_gcd_icd.empty() )
   {
     return;
   }
@@ -12643,7 +12574,7 @@ void player_t::update_off_gcd_ready()
 // line_cooldown option, since that is APL-line specific.
 void player_t::update_cast_while_casting_ready()
 {
-  if ( cast_while_casting_cd.size() == 0 && cast_while_casting_icd.size() == 0 )
+  if ( cast_while_casting_cd.empty() && cast_while_casting_icd.empty() )
   {
     return;
   }
@@ -12665,7 +12596,7 @@ void player_t::update_cast_while_casting_ready()
  */
 bool player_t::verify_use_items() const
 {
-  if ( !sim->use_item_verification || ( action_list_str.empty() && action_priority_list.size() == 0 ) )
+  if ( !sim->use_item_verification || ( action_list_str.empty() && action_priority_list.empty() ) )
   {
     return true;
   }

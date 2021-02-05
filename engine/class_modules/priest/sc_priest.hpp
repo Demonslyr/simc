@@ -1,10 +1,11 @@
 // ==========================================================================
-// Dedmonwakeen's Raid DPS/TPS Simulator.
-// Send questions to natehieter@gmail.com
+// Priest Definitions Sim File
+// Contact: https://github.com/orgs/simulationcraft/teams/priest/members
+// Wiki: https://github.com/simulationcraft/simc/wiki/Priests
 // ==========================================================================
 //
 // This file contains all definitions for priests. Implementations should
-// be done on sc_priest.cpp if they are shared by more than one spec or
+// be done in sc_priest.cpp if they are shared by more than one spec or
 // in the respective spec file if they are limited to one spec only.
 
 #pragma once
@@ -24,6 +25,7 @@ namespace actions
 {
 namespace spells
 {
+struct ascended_blast_heal_t;
 struct mind_sear_tick_t;
 struct shadowy_apparition_spell_t;
 struct angelic_feather_t;
@@ -36,10 +38,12 @@ struct summon_pet_t;
 struct summon_shadowfiend_t;
 struct summon_mindbender_t;
 struct ascended_eruption_t;
+struct ascended_eruption_heal_t;
 struct wrathful_faerie_t;
 struct wrathful_faerie_fermata_t;
 struct psychic_link_t;
 struct eternal_call_to_the_void_t;
+struct unholy_transfusion_healing_t;
 }  // namespace spells
 namespace heals
 {
@@ -51,16 +55,6 @@ namespace buffs
 {
 struct dispersion_t;
 }
-
-namespace pets
-{
-struct void_tendril_t;
-struct void_lasher_t;
-namespace fiend
-{
-struct base_fiend_pet_t;
-}
-}  // namespace pets
 
 /**
  * Priest target data
@@ -130,7 +124,6 @@ public:
     propagate_const<buffs::dispersion_t*> dispersion;
     propagate_const<buff_t*> shadowform;
     propagate_const<buff_t*> shadowform_state;  // Dummy buff to track whether player entered Shadowform initially
-    propagate_const<buff_t*> shadowy_insight;
     propagate_const<buff_t*> surrender_to_madness;
     propagate_const<buff_t*> surrender_to_madness_death;
     propagate_const<buff_t*> vampiric_embrace;
@@ -145,6 +138,7 @@ public:
     // Runeforge Legendary
     propagate_const<buff_t*> the_penitent_one;
     propagate_const<buff_t*> sephuzs_proclamation;
+    propagate_const<buff_t*> talbadars_stratagem;
 
     // Conduits
     propagate_const<buff_t*> mind_devourer;
@@ -162,7 +156,7 @@ public:
     const spell_data_t* mindbender;
     const spell_data_t* twist_of_fate;
     const spell_data_t* angelic_feather;
-    const spell_data_t* body_and_soul;  // NYI
+    const spell_data_t* body_and_soul;  // implemented for PW:S
     const spell_data_t* shining_force;
     const spell_data_t* psychic_voice;
     const spell_data_t* divine_star;
@@ -172,56 +166,32 @@ public:
     // T15
     const spell_data_t* castigation;
     const spell_data_t* schism;
-    // T25
-    const spell_data_t* masochism;  // NYI
     // T30
-    const spell_data_t* shield_discipline;  // NYI
     const spell_data_t* power_word_solace;
-    // T35
-    const spell_data_t* dominant_mind;  // NYI
     // T40
-    const spell_data_t* sins_of_the_many;
-    const spell_data_t* contrition;       // NYI
-    const spell_data_t* shadow_covenant;  // NYI
+    const spell_data_t* sins_of_the_many;  // assumes 0 atonement targets
+    const spell_data_t* shadow_covenant;   // healing not fully implemented, only dmg/healing buff
     // T45
     const spell_data_t* purge_the_wicked;
     // T50
-    const spell_data_t* lenience;     // not fully implemented
-    const spell_data_t* spirit_shell;     // not fully implemented
-    const spell_data_t* evangelism;     // not fully implemented
+    const spell_data_t* spirit_shell;  // not fully implemented
 
     // Holy
-    // T15
-    const spell_data_t* enlightenment;     // NYI
-    const spell_data_t* trail_of_light;    // NYI
-    const spell_data_t* enduring_renewal;  // NYI
-    // T25
-    const spell_data_t* angels_mercy;  // NYI
-    // T30
-    const spell_data_t* cosmic_ripple;   // NYI
-    const spell_data_t* guardian_angel;  // NYI
-    const spell_data_t* after_life;      // NYI
-    // T35
-    const spell_data_t* censure;  // NYI
-    // T40
-    const spell_data_t* surge_of_light;  // NYI
-    const spell_data_t* binding_heal;    // NYI
-    const spell_data_t* prayer_circle;   // NYI
-    // T45
-    const spell_data_t* benediction;  // NYI
-    // T50
-    const spell_data_t* light_of_the_naaru;  // NYI
+    // // T15
+    const spell_data_t* enlightenment;
+    // // T50
+    const spell_data_t* light_of_the_naaru;
     const spell_data_t* apotheosis;
-    const spell_data_t* holy_word_salvation;  // NYI
 
     // Shadow
     // T15
     const spell_data_t* fortress_of_the_mind;
     const spell_data_t* death_and_madness;
+    const spell_data_t* death_and_madness_insanity;
     const spell_data_t* unfurling_darkness;
     // T25
-    const spell_data_t* sanlayn;        // NYI
-    const spell_data_t* intangibility;  // NYI
+    const spell_data_t* sanlayn;
+    const spell_data_t* intangibility;  // CDR implemented, healing NYI
     // T30
     const spell_data_t* searing_nightmare;
     const spell_data_t* misery;
@@ -246,37 +216,40 @@ public:
   // Specialization Spells
   struct
   {
-    const spell_data_t* priest;  // General priest data
+    const spell_data_t* mind_blast;
     const spell_data_t* mind_sear;
+    const spell_data_t* mind_sear_insanity;
+    const spell_data_t* priest;  // General priest data
+    const spell_data_t* shadow_word_death;
 
     // Discipline
-    const spell_data_t* discipline;  // General discipline data
-    const spell_data_t* discipline_priest;
+    const spell_data_t* discipline_priest;       // General discipline data
     const spell_data_t* power_of_the_dark_side;  // For buffing the damage of penance
 
     // Holy
-    const spell_data_t* holy;  // General holy data
-    const spell_data_t* rapid_renewal;
+    const spell_data_t* holy_priest;  // General holy data
     const spell_data_t* holy_words;
-    const spell_data_t* holy_word_chastise;
     const spell_data_t* holy_word_serenity;
-    const spell_data_t* holy_nova;
-    const spell_data_t* holy_fire;
-    const spell_data_t* apotheosis;
-    const spell_data_t* serendipity;
-    const spell_data_t* divine_providence;
-
-    const spell_data_t* focused_will;
-    const spell_data_t* holy_priest;
 
     // Shadow
-    const spell_data_t* shadow;  // General shadow data
-    const spell_data_t* shadowy_apparitions;
+    const spell_data_t* dark_thought;   // Actual buff, holds proc rate
+    const spell_data_t* dark_thoughts;  // Passive effect
+    const spell_data_t* dispersion;
+    const spell_data_t* mind_flay;
+    const spell_data_t* shadow_priest;        // General shadow data
+    const spell_data_t* shadowy_apparition;   // Damage event
+    const spell_data_t* shadowy_apparitions;  // Passive effect
+    const spell_data_t* shadowform;
+    const spell_data_t* silence;
+    const spell_data_t* vampiric_embrace;
+    const spell_data_t* void_bolt;
     const spell_data_t* voidform;
     const spell_data_t* void_eruption;
-    const spell_data_t* shadow_priest;
-    const spell_data_t* dark_thoughts;
-    const spell_data_t* mind_flay;
+    const spell_data_t* void_eruption_damage;
+
+    // Legendary Effects
+    const spell_data_t* cauterizing_shadows_health;
+    const spell_data_t* painbreaker_psalm_insanity;
   } specs;
 
   // DoT Spells
@@ -320,23 +293,20 @@ public:
   // Gains
   struct
   {
-    propagate_const<gain_t*> mindbender;
-    propagate_const<gain_t*> power_word_solace;
+    propagate_const<gain_t*> cauterizing_shadows_health;
     propagate_const<gain_t*> insanity_auspicious_spirits;
-    propagate_const<gain_t*> insanity_dispersion;
-    propagate_const<gain_t*> insanity_pet;
-    propagate_const<gain_t*> insanity_surrender_to_madness;
-    propagate_const<gain_t*> insanity_blessing;
-    propagate_const<gain_t*> shadowy_insight;
-    propagate_const<gain_t*> vampiric_touch_health;
-    propagate_const<gain_t*> power_of_the_dark_side;
-    propagate_const<gain_t*> shadow_word_death_self_damage;
     propagate_const<gain_t*> insanity_death_and_madness;
-    propagate_const<gain_t*> insanity_mindgames;
     propagate_const<gain_t*> insanity_eternal_call_to_the_void_mind_flay;
     propagate_const<gain_t*> insanity_eternal_call_to_the_void_mind_sear;
     propagate_const<gain_t*> insanity_mind_sear;
+    propagate_const<gain_t*> insanity_mindgames;
+    propagate_const<gain_t*> insanity_pet;
+    propagate_const<gain_t*> insanity_surrender_to_madness;
+    propagate_const<gain_t*> mindbender;
     propagate_const<gain_t*> painbreaker_psalm;
+    propagate_const<gain_t*> power_of_the_dark_side;
+    propagate_const<gain_t*> power_word_solace;
+    propagate_const<gain_t*> shadow_word_death_self_damage;
   } gains;
 
   // Benefits
@@ -347,8 +317,6 @@ public:
   // Procs
   struct
   {
-    propagate_const<proc_t*> shadowy_insight;
-    propagate_const<proc_t*> shadowy_insight_overflow;
     propagate_const<proc_t*> serendipity;
     propagate_const<proc_t*> serendipity_overflow;
     propagate_const<proc_t*> shadowy_apparition;
@@ -370,13 +338,16 @@ public:
   // Special
   struct
   {
+    propagate_const<actions::spells::ascended_blast_heal_t*> ascended_blast_heal;
+    propagate_const<actions::spells::ascended_eruption_t*> ascended_eruption;
+    propagate_const<actions::spells::ascended_eruption_heal_t*> ascended_eruption_heal;
+    propagate_const<actions::spells::eternal_call_to_the_void_t*> eternal_call_to_the_void;
     propagate_const<actions::spells::mind_sear_tick_t*> mind_sear_tick;
-    propagate_const<actions::spells::shadowy_apparition_spell_t*> shadowy_apparitions;
     propagate_const<actions::spells::psychic_link_t*> psychic_link;
+    propagate_const<actions::spells::shadowy_apparition_spell_t*> shadowy_apparitions;
+    propagate_const<actions::spells::unholy_transfusion_healing_t*> unholy_transfusion_healing;
     propagate_const<actions::spells::wrathful_faerie_t*> wrathful_faerie;
     propagate_const<actions::spells::wrathful_faerie_fermata_t*> wrathful_faerie_fermata;
-    propagate_const<actions::spells::ascended_eruption_t*> ascended_eruption;
-    propagate_const<actions::spells::eternal_call_to_the_void_t*> eternal_call_to_the_void;
   } background_actions;
 
   // Items
@@ -389,8 +360,8 @@ public:
   {
     propagate_const<pet_t*> shadowfiend;
     propagate_const<pet_t*> mindbender;
-    spawner::pet_spawner_t<pets::void_tendril_t, priest_t> void_tendril;
-    spawner::pet_spawner_t<pets::void_lasher_t, priest_t> void_lasher;
+    spawner::pet_spawner_t<pet_t, priest_t> void_tendril;
+    spawner::pet_spawner_t<pet_t, priest_t> void_lasher;
 
     priest_pets_t( priest_t& p );
   } pets;
@@ -398,37 +369,40 @@ public:
   // Options
   struct
   {
-    bool autoUnshift                 = true;  // Shift automatically out of stance/form
-    bool priest_fixed_time           = true;
-    bool priest_ignore_healing       = false;  // Remove Healing calculation codes
-    int priest_set_voidform_duration = 0;      // Voidform will always have this duration
+    bool autoUnshift = true;  // Shift automatically out of stance/form
+    bool fixed_time  = true;
 
     // Default param to set if you should cast Power Infusion on yourself
-    bool priest_self_power_infusion = true;
+    bool self_power_infusion = true;
 
     // Add in easy options to change if you are in range or not
-    bool priest_use_ascended_nova     = true;
-    bool priest_use_ascended_eruption = true;
+    bool use_ascended_nova     = true;
+    bool use_ascended_eruption = true;
 
     // Add in options to override insanity gained
     // Mindgames gives 20 insanity from the healing and 20 from damage dealt
     // For most content the healing part won't proc, only default damage dealt
-    bool priest_mindgames_healing_insanity = false;
-    bool priest_mindgames_damage_insanity  = true;
+    bool mindgames_healing_reversal = false;
+    bool mindgames_damage_reversal  = true;
 
     // Fae Blessings CDR can be given to another player, but you can still get the insanity gen
-    bool priest_self_benevolent_faerie = true;
+    bool self_benevolent_faerie = true;
 
     // Add "bugged" targets to Ascended Eruption for the SQRT calculation
     // Setting to 0 turns off the bug
-    int priest_ascended_eruption_additional_targets = 0;
+    int ascended_eruption_additional_targets = 0;
+
+    // The amount of allies to assume for Cauterizing Shadows healing
+    int cauterizing_shadows_allies = 3;
   } options;
 
   // Legendaries
   struct
   {
-    // Generic Priest
+    // Generic
     item_runeforge_t sephuzs_proclamation;
+    // Shared
+    item_runeforge_t cauterizing_shadows;
     item_runeforge_t twins_of_the_sun_priestess;
     // Holy
     item_runeforge_t divine_image;          // NYI
@@ -467,9 +441,20 @@ public:
   // Covenants
   struct
   {
+    // Night Fae
+    const spell_data_t* benevolent_faerie;
     const spell_data_t* fae_guardians;
+    // Necrolord
     const spell_data_t* unholy_nova;
+    // Venthyr
     const spell_data_t* mindgames;
+    const spell_data_t* mindgames_healing_reversal;
+    const spell_data_t* mindgames_damage_reversal;
+    // Kyrian
+    const spell_data_t* ascended_blast;
+    const spell_data_t* ascended_blast_heal;
+    const spell_data_t* ascended_eruption;
+    const spell_data_t* ascended_nova;
     const spell_data_t* boon_of_the_ascended;
   } covenant;
 
@@ -511,7 +496,9 @@ public:
   void init_rng() override;
   const priest_td_t* find_target_data( const player_t* target ) const override;
   priest_td_t* get_target_data( player_t* target ) const override;
-  std::unique_ptr<expr_t> create_expression( util::string_view name_str ) override;
+  std::unique_ptr<expr_t> create_expression( util::string_view expression_str ) override;
+  std::unique_ptr<expr_t> create_pet_expression( util::string_view expression_str,
+                                                 util::span<util::string_view> splits );
   void arise() override;
   void do_dynamic_regen( bool ) override;
   void apply_affecting_auras( action_t& ) override;
@@ -522,12 +509,9 @@ private:
   void create_gains();
   void create_procs();
   void create_benefits();
-  void create_apl_precombat();
-  void create_apl_default();
   void create_buffs_shadow();
   void init_rng_shadow();
   void init_spells_shadow();
-  void generate_apl_shadow();
   std::unique_ptr<expr_t> create_expression_shadow( util::string_view name_str );
   action_t* create_action_shadow( util::string_view name, util::string_view options_str );
 
@@ -536,16 +520,13 @@ private:
   void init_rng_discipline();
 
   void init_background_actions_shadow();
-  void generate_apl_discipline_d();
-  void generate_apl_discipline_h();
   std::unique_ptr<expr_t> create_expression_discipline( action_t* a, const util::string_view name_str );
   action_t* create_action_discipline( util::string_view name, util::string_view options_str );
 
   void create_buffs_holy();
   void init_spells_holy();
   void init_rng_holy();
-  void generate_apl_holy_d();
-  void generate_apl_holy_h();
+  void generate_apl_holy();
   expr_t* create_expression_holy( action_t* a, util::string_view name_str );
   action_t* create_action_holy( util::string_view name, util::string_view options_str );
   target_specific_t<priest_td_t> _target_data;
@@ -560,13 +541,14 @@ public:
   void trigger_psychic_link( action_state_t* );
   bool hungering_void_active( player_t* target ) const;
   void remove_hungering_void( player_t* target );
+  void refresh_talbadars_buff( action_state_t* s );
   void trigger_wrathful_faerie();
   void trigger_wrathful_faerie_fermata();
   void remove_wrathful_faerie();
   void remove_wrathful_faerie_fermata();
   int shadow_weaving_active_dots( const player_t* target, const unsigned int spell_id ) const;
   double shadow_weaving_multiplier( const player_t* target, const unsigned int spell_id ) const;
-  pets::fiend::base_fiend_pet_t* get_current_main_pet();
+  void trigger_unholy_transfusion_healing();
 
   std::string default_potion() const override;
   std::string default_flask() const override;
@@ -574,475 +556,6 @@ public:
   std::string default_rune() const override;
   std::string default_temporary_enchant() const override;
 };
-
-namespace pets
-{
-/**
- * Pet base class
- *
- * Defines characteristics common to ALL priest pets.
- */
-struct priest_pet_t : public pet_t
-{
-  priest_pet_t( sim_t* sim, priest_t& owner, util::string_view pet_name, pet_e pt, bool guardian = false )
-    : pet_t( sim, &owner, pet_name, pt, guardian )
-  {
-  }
-
-  void init_base_stats() override
-  {
-    pet_t::init_base_stats();
-
-    base.position = POSITION_BACK;
-    base.distance = 3;
-
-    owner_coeff.ap_from_sp = 1.0;
-    owner_coeff.sp_from_sp = 1.0;
-  }
-
-  void schedule_ready( timespan_t delta_time, bool waiting ) override
-  {
-    if ( main_hand_attack && !main_hand_attack->execute_event )
-    {
-      main_hand_attack->schedule_execute();
-    }
-
-    pet_t::schedule_ready( delta_time, waiting );
-  }
-
-  double composite_player_multiplier( school_e school ) const override
-  {
-    double m = pet_t::composite_player_multiplier( school );
-
-    // Orc racial
-    m *= 1.0 + o().racials.command->effectN( 1 ).percent();
-
-    return m;
-  }
-
-  resource_e primary_resource() const override
-  {
-    return RESOURCE_ENERGY;
-  }
-
-  priest_t& o()
-  {
-    return static_cast<priest_t&>( *owner );
-  }
-  const priest_t& o() const
-  {
-    return static_cast<priest_t&>( *owner );
-  }
-};
-
-struct priest_pet_melee_t : public melee_attack_t
-{
-  bool first_swing;
-
-  priest_pet_melee_t( priest_pet_t& p, util::string_view name )
-    : melee_attack_t( name, &p, spell_data_t::nil() ), first_swing( true )
-  {
-    school            = SCHOOL_SHADOW;
-    weapon            = &( p.main_hand_weapon );
-    weapon_multiplier = 1.0;
-    base_execute_time = weapon->swing_time;
-    may_crit          = true;
-    background        = true;
-    repeating         = true;
-  }
-
-  void reset() override
-  {
-    melee_attack_t::reset();
-    first_swing = true;
-  }
-
-  double composite_target_multiplier( player_t* target ) const override
-  {
-    double mul = attack_t::composite_target_multiplier( target );
-
-    mul *= debug_cast<priest_t*>( debug_cast<priest_pet_t*>( player )->owner )->shadow_weaving_multiplier( target, 0 );
-
-    return mul;
-  }
-
-  timespan_t execute_time() const override
-  {
-    // First swing comes instantly after summoning the pet
-    if ( first_swing )
-      return timespan_t::zero();
-
-    return melee_attack_t::execute_time();
-  }
-
-  void schedule_execute( action_state_t* state = nullptr ) override
-  {
-    melee_attack_t::schedule_execute( state );
-
-    first_swing = false;
-  }
-};
-
-struct priest_pet_spell_t : public spell_t
-{
-  bool affected_by_shadow_weaving;
-
-  priest_pet_spell_t( priest_pet_t& p, util::string_view n )
-    : spell_t( n, &p, p.find_pet_spell( n ) ), affected_by_shadow_weaving( false )
-  {
-    may_crit = true;
-  }
-
-  priest_pet_spell_t( util::string_view token, priest_pet_t* p, const spell_data_t* s = spell_data_t::nil() )
-    : spell_t( token, p, s )
-  {
-    may_crit = true;
-  }
-
-  priest_pet_t& p()
-  {
-    return static_cast<priest_pet_t&>( *player );
-  }
-  const priest_pet_t& p() const
-  {
-    return static_cast<priest_pet_t&>( *player );
-  }
-
-  double composite_target_da_multiplier( player_t* t ) const override
-  {
-    double tdm = action_t::composite_target_da_multiplier( t );
-
-    if ( affected_by_shadow_weaving )
-    {
-      tdm *= p().o().shadow_weaving_multiplier( t, id );
-    }
-
-    return tdm;
-  }
-
-  double composite_target_ta_multiplier( player_t* t ) const override
-  {
-    double ttm = action_t::composite_target_ta_multiplier( t );
-
-    if ( affected_by_shadow_weaving )
-    {
-      ttm *= p().o().shadow_weaving_multiplier( t, id );
-    }
-
-    return ttm;
-  }
-};
-
-namespace fiend
-{
-namespace actions
-{
-struct shadowflame_prism_t;
-}
-
-/**
- * Abstract base class for Shadowfiend and Mindbender
- */
-struct base_fiend_pet_t : public priest_pet_t
-{
-  propagate_const<actions::shadowflame_prism_t*> shadowflame_prism;
-
-  struct gains_t
-  {
-    propagate_const<gain_t*> fiend;
-  } gains;
-
-  double direct_power_mod;
-
-  base_fiend_pet_t( sim_t* sim, priest_t& owner, pet_e pt, util::string_view name )
-    : priest_pet_t( sim, owner, name, pt ), shadowflame_prism( nullptr ), gains(), direct_power_mod( 0.0 )
-  {
-    main_hand_weapon.type       = WEAPON_BEAST;
-    main_hand_weapon.swing_time = timespan_t::from_seconds( 1.5 );
-
-    owner_coeff.health = 0.3;
-  }
-
-  virtual double mana_return_percent() const = 0;
-  virtual double insanity_gain() const       = 0;
-
-  void init_action_list() override;
-
-  void init_background_actions() override;
-
-  void init_gains() override
-  {
-    priest_pet_t::init_gains();
-
-    if ( o().specialization() == PRIEST_SHADOW )
-    {
-      gains.fiend = o().gains.insanity_pet;
-    }
-    else
-    {
-      switch ( pet_type )
-      {
-        case PET_MINDBENDER:
-        {
-          gains.fiend = o().gains.mindbender;
-        }
-        break;
-        default:
-          gains.fiend = get_gain( "basefiend" );
-          break;
-      }
-    }
-  }
-
-  void init_resources( bool force ) override
-  {
-    priest_pet_t::init_resources( force );
-
-    resources.initial[ RESOURCE_MANA ] = owner->resources.max[ RESOURCE_MANA ];
-    resources.current = resources.max = resources.initial;
-  }
-
-  action_t* create_action( util::string_view name, const std::string& options_str ) override;
-};
-
-struct shadowfiend_pet_t final : public base_fiend_pet_t
-{
-  double power_leech_insanity;
-
-  shadowfiend_pet_t( sim_t* sim, priest_t& owner, util::string_view name = "shadowfiend" )
-    : base_fiend_pet_t( sim, owner, PET_SHADOWFIEND, name ),
-      power_leech_insanity( o().find_spell( 262485 )->effectN( 1 ).resource( RESOURCE_INSANITY ) )
-  {
-    direct_power_mod = 0.408;  // New modifier after Spec Spell has been 0'd -- Anshlun 2020-10-06
-    npc_id           = 19668;
-
-    main_hand_weapon.min_dmg = owner.dbc->spell_scaling( owner.type, owner.level() ) * 2;
-    main_hand_weapon.max_dmg = owner.dbc->spell_scaling( owner.type, owner.level() ) * 2;
-
-    main_hand_weapon.damage = ( main_hand_weapon.min_dmg + main_hand_weapon.max_dmg ) / 2;
-  }
-
-  double mana_return_percent() const override
-  {
-    return 0.0;
-  }
-  double insanity_gain() const override
-  {
-    return power_leech_insanity;
-  }
-};
-
-struct mindbender_pet_t final : public base_fiend_pet_t
-{
-  const spell_data_t* mindbender_spell;
-  double power_leech_insanity;
-
-  mindbender_pet_t( sim_t* sim, priest_t& owner, util::string_view name = "mindbender" )
-    : base_fiend_pet_t( sim, owner, PET_MINDBENDER, name ),
-      mindbender_spell( owner.find_spell( 123051 ) ),
-      power_leech_insanity( o().find_spell( 200010 )->effectN( 1 ).resource( RESOURCE_INSANITY ) )
-  {
-    direct_power_mod = 0.442;  // New modifier after Spec Spell has been 0'd -- Anshlun 2020-10-06
-    npc_id           = 62982;
-
-    main_hand_weapon.min_dmg = owner.dbc->spell_scaling( owner.type, owner.level() ) * 2;
-    main_hand_weapon.max_dmg = owner.dbc->spell_scaling( owner.type, owner.level() ) * 2;
-    main_hand_weapon.damage  = ( main_hand_weapon.min_dmg + main_hand_weapon.max_dmg ) / 2;
-  }
-
-  double mana_return_percent() const override
-  {
-    double m = mindbender_spell->effectN( 1 ).percent();
-    return m / 100;
-  }
-  double insanity_gain() const override
-  {
-    return power_leech_insanity;
-  }
-};
-
-namespace actions
-{
-struct shadowcrawl_t final : public priest_pet_spell_t
-{
-  shadowcrawl_t( base_fiend_pet_t& p ) : priest_pet_spell_t( p, "Shadowcrawl" )
-  {
-    may_miss = false;
-    harmful  = false;
-  }
-
-  base_fiend_pet_t& p()
-  {
-    return static_cast<base_fiend_pet_t&>( *player );
-  }
-  const base_fiend_pet_t& p() const
-  {
-    return static_cast<base_fiend_pet_t&>( *player );
-  }
-};
-
-struct fiend_melee_t : public priest_pet_melee_t
-{
-  fiend_melee_t( base_fiend_pet_t& p ) : priest_pet_melee_t( p, "melee" )
-  {
-    weapon                  = &( p.main_hand_weapon );
-    weapon_multiplier       = 0.0;
-    base_dd_min             = weapon->min_dmg;
-    base_dd_max             = weapon->max_dmg;
-    attack_power_mod.direct = p.direct_power_mod;
-  }
-
-  base_fiend_pet_t& p()
-  {
-    return static_cast<base_fiend_pet_t&>( *player );
-  }
-  const base_fiend_pet_t& p() const
-  {
-    return static_cast<base_fiend_pet_t&>( *player );
-  }
-
-  timespan_t execute_time() const override
-  {
-    if ( base_execute_time == timespan_t::zero() )
-      return timespan_t::zero();
-
-    // Mindbender inherits haste from the player
-    timespan_t hasted_time = base_execute_time * player->cache.spell_speed();
-
-    if ( p().o().conduits.rabid_shadows->ok() )
-    {
-      hasted_time /= 1.0 + p().o().conduits.rabid_shadows.percent();
-    }
-
-    return hasted_time;
-  }
-
-  void impact( action_state_t* s ) override
-  {
-    priest_pet_melee_t::impact( s );
-
-    if ( result_is_hit( s->result ) )
-    {
-      if ( p().o().specialization() == PRIEST_SHADOW )
-      {
-        double amount = p().insanity_gain();
-        if ( p().o().buffs.surrender_to_madness->up() )
-        {
-          p().o().resource_gain(
-              RESOURCE_INSANITY,
-              ( amount * ( 1.0 + p().o().talents.surrender_to_madness->effectN( 2 ).percent() ) ) - amount,
-              p().o().gains.insanity_surrender_to_madness );
-        }
-        p().o().resource_gain( RESOURCE_INSANITY, amount, p().gains.fiend, nullptr );
-      }
-      else
-      {
-        double mana_reg_pct = p().mana_return_percent();
-        if ( mana_reg_pct > 0.0 )
-        {
-          p().o().resource_gain( RESOURCE_MANA, p().o().resources.max[ RESOURCE_MANA ] * p().mana_return_percent(),
-                                 p().gains.fiend );
-        }
-      }
-    }
-  }
-};
-
-// ==========================================================================
-// Shadowflame Rift
-// ==========================================================================
-struct shadowflame_rift_t final : public priest_pet_spell_t
-{
-  shadowflame_rift_t( base_fiend_pet_t& p ) : priest_pet_spell_t( "shadowflame_rift", &p, p.o().find_spell( 344748 ) )
-  {
-    background = true;
-    // This is hard coded in the spell
-    // Depending on Mindbender or Shadowfiend this hits differently
-    switch ( p.pet_type )
-    {
-      case PET_MINDBENDER:
-      {
-        spell_power_mod.direct *= 0.442;
-      }
-      break;
-      default:
-        spell_power_mod.direct *= 0.408;
-        break;
-    }
-  }
-};
-
-// ==========================================================================
-// Shadowflame Prism
-// ==========================================================================
-struct shadowflame_prism_t final : public priest_pet_spell_t
-{
-  timespan_t duration;
-
-  shadowflame_prism_t( base_fiend_pet_t& p )
-    : priest_pet_spell_t( "shadowflame_prism", &p, p.o().find_spell( 336143 ) ),
-      duration( timespan_t::from_seconds( data().effectN( 3 ).base_value() ) )
-  {
-    background = true;
-
-    impact_action = new shadowflame_rift_t( p );
-    add_child( impact_action );
-  }
-
-  void execute() override
-  {
-    priest_pet_spell_t::execute();
-
-    auto current_pet = p().o().get_current_main_pet();
-
-    if ( current_pet && !current_pet->is_sleeping() )
-    {
-      auto remaining_duration = current_pet->expiration->remains();
-      auto new_duration       = remaining_duration + duration;
-      sim->print_debug( "Increasing {} duration by {}, new duration is {} up from {}.", current_pet->full_name_str,
-                        duration, new_duration, remaining_duration );
-      current_pet->expiration->reschedule( new_duration );
-    }
-  }
-};
-}  // namespace actions
-}  // namespace fiend
-
-struct void_tendril_t final : public priest_pet_t
-{
-  void_tendril_t( priest_t* owner ) : priest_pet_t( owner->sim, *owner, "void_tendril", PET_VOID_TENDRIL, true )
-  {
-  }
-
-  void init_action_list() override
-  {
-    priest_pet_t::init_action_list();
-
-    action_priority_list_t* def = get_action_priority_list( "default" );
-    def->add_action( "mind_flay" );
-  }
-
-  action_t* create_action( util::string_view name, const std::string& options_str ) override;
-};
-
-struct void_lasher_t final : public priest_pet_t
-{
-  void_lasher_t( priest_t* owner ) : priest_pet_t( owner->sim, *owner, "void_lasher", PET_VOID_LASHER, true )
-  {
-  }
-
-  void init_action_list() override
-  {
-    priest_pet_t::init_action_list();
-
-    action_priority_list_t* def = get_action_priority_list( "default" );
-    def->add_action( "mind_sear" );
-  }
-
-  action_t* create_action( util::string_view name, const std::string& options_str ) override;
-};
-
-}  // namespace pets
 
 namespace actions
 {
@@ -1269,13 +782,6 @@ struct priest_heal_t : public priest_action_t<heal_t>
   {
   }
 
-  void execute() override
-  {
-    base_t::execute();
-
-    may_crit = true;
-  }
-
   void impact( action_state_t* s ) override
   {
     double save_health_percentage = s->target->health_percentage();
@@ -1353,20 +859,28 @@ struct priest_spell_t : public priest_action_t<spell_t>
         priest().buffs.twist_of_fate->trigger();
       }
 
-      // Wrathful Faerie works for any direct attacks by anyone, bugging this for now
-      // TODO: maybe rework this to just be a buff that gives insanity every tick instead?
-      // https://github.com/SimCMinMax/WoW-BugTracker/issues/777
-      if ( priest().specialization() == PRIEST_SHADOW &&
-           ( s->result_type == result_amount_type::DMG_DIRECT || priest().bugs ) && s->result_amount > 0 )
+      if ( s->result_amount > 0 )
       {
         const priest_td_t* td = find_td( s->target );
-        if ( td && td->buffs.wrathful_faerie->check() )
+        // Wrathful Faerie works for any direct attacks by anyone, bugging this for now
+        // TODO: maybe rework this to just be a buff that gives insanity every tick instead?
+        // https://github.com/SimCMinMax/WoW-BugTracker/issues/777
+        if ( s->result_type == result_amount_type::DMG_DIRECT || priest().bugs )
         {
-          priest().trigger_wrathful_faerie();
+          if ( td && td->buffs.wrathful_faerie->check() )
+          {
+            priest().trigger_wrathful_faerie();
+          }
+          if ( td && td->buffs.wrathful_faerie_fermata->check() )
+          {
+            priest().trigger_wrathful_faerie_fermata();
+          }
         }
-        if ( td && td->buffs.wrathful_faerie_fermata->check() )
+
+        // Unholy Transfusion leech healing
+        if ( td && td->dots.unholy_transfusion->is_ticking() )
         {
-          priest().trigger_wrathful_faerie_fermata();
+          priest().trigger_unholy_transfusion_healing();
         }
       }
     }

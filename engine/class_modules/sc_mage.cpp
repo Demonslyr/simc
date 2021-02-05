@@ -488,12 +488,14 @@ public:
   // Options
   struct options_t
   {
-    timespan_t firestarter_time = 0_ms;
+    double firestarter_duration_multiplier = 1.0;
+    double searing_touch_duration_multiplier = 1.0;
     timespan_t frozen_duration = 1.0_s;
     timespan_t scorch_delay = 15_ms;
     timespan_t focus_magic_interval = 1.5_s;
     double focus_magic_relstddev = 0.1;
     double focus_magic_crit_chance = 0.85;
+    bool focus_magic_trade = false;
     timespan_t mirrors_of_torment_interval = 1.5_s;
     timespan_t arcane_missiles_chain_delay = 200_ms;
     double arcane_missiles_chain_relstddev = 0.1;
@@ -746,7 +748,7 @@ public:
     uptime_t* conserve_phase;
   } uptime;
 
-public:
+
   mage_t( sim_t* sim, util::string_view name, race_e r = RACE_NONE );
 
   // Character Definition
@@ -769,7 +771,7 @@ public:
   void invalidate_cache( cache_e ) override;
   void init_resources( bool ) override;
   void do_dynamic_regen( bool = false ) override;
-  void recalculate_resource_max( resource_e, gain_t* g = nullptr ) override;
+  void recalculate_resource_max( resource_e, gain_t* = nullptr ) override;
   void reset() override;
   std::unique_ptr<expr_t> create_expression( util::string_view ) override;
   std::unique_ptr<expr_t> create_action_expression( action_t&, util::string_view ) override;
@@ -1316,17 +1318,22 @@ struct mage_spell_state_t : public action_state_t
   // Damage multiplier that is in efffect only for frozen targets.
   double frozen_multiplier;
 
+  // Damage multiplier that must be factored out when storing Touch of the Magi damage.
+  double totm_factor;
+
   mage_spell_state_t( action_t* action, player_t* target ) :
     action_state_t( action, target ),
     frozen(),
-    frozen_multiplier( 1.0 )
+    frozen_multiplier( 1.0 ),
+    totm_factor( 1.0 )
   { }
 
   void initialize() override
   {
     action_state_t::initialize();
-    frozen = 0u;
+    frozen = 0U;
     frozen_multiplier = 1.0;
+    totm_factor = 1.0;
   }
 
   std::ostringstream& debug_str( std::ostringstream& s ) override
@@ -1375,6 +1382,7 @@ struct mage_spell_state_t : public action_state_t
     auto mss = debug_cast<const mage_spell_state_t*>( s );
     frozen            = mss->frozen;
     frozen_multiplier = mss->frozen_multiplier;
+    totm_factor       = mss->totm_factor;
   }
 
   virtual double composite_frozen_multiplier() const
@@ -1597,9 +1605,9 @@ public:
     const mage_td_t* td = find_td( s->target );
 
     if ( !td )
-      return 0u;
+      return 0U;
 
-    unsigned source = 0u;
+    unsigned source = 0U;
 
     if ( td->debuffs.winters_chill->check() )
       source |= FF_WINTERS_CHILL;
@@ -1623,6 +1631,9 @@ public:
 
     if ( flags & STATE_FROZEN_MUL )
       cast_state( s )->frozen_multiplier = frozen_multiplier( s );
+
+    if ( flags & ( STATE_TGT_MUL_DA | STATE_TGT_MUL_TA ) && p()->spec.touch_of_the_magi->ok() )
+      cast_state( s )->totm_factor = composite_target_damage_vulnerability( s->target );
   }
 
   double cost() const override
@@ -1743,7 +1754,10 @@ public:
       auto totm = td->debuffs.touch_of_the_magi;
       if ( totm->check() )
       {
-        totm->current_value += s->result_total;
+        // Touch of the Magi factors out debuffs with effect subtype 87 (Modify Damage Taken%), but only
+        // if they increase damage taken. It does not factor out debuffs with effect subtype 270
+        // (Modify Damage Taken% from Caster) or 271 (Modify Damage Taken% from Caster's Spells).
+        totm->current_value += s->result_total / std::max( cast_state( s )->totm_factor, 1.0 );
 
         // Arcane Echo doesn't use the normal callbacks system (both in simc and in game). To prevent
         // loops, we need to explicitly check that the triggering action wasn't Arcane Echo.
@@ -2019,11 +2033,15 @@ struct fire_mage_spell_t : public mage_spell_t
     if ( !p()->talents.firestarter->ok() )
       return false;
 
-    // Check for user-specified override.
-    if ( p()->options.firestarter_time > 0_ms )
-      return sim->current_time() < p()->options.firestarter_time;
-    else
-      return target->health_percentage() > p()->talents.firestarter->effectN( 1 ).base_value();
+    return target->health_percentage() > 100.0 - ( 100.0 - p()->talents.firestarter->effectN( 1 ).base_value() ) * p()->options.firestarter_duration_multiplier;
+  }
+
+  bool searing_touch_active( player_t* target ) const
+  {
+    if ( !p()->talents.searing_touch->ok() )
+      return false;
+
+    return target->health_percentage() < p()->talents.searing_touch->effectN( 1 ).base_value() * p()->options.searing_touch_duration_multiplier;
   }
 
   void trigger_molten_skyfall()
@@ -2099,8 +2117,8 @@ struct hot_streak_spell_t : public fire_mage_spell_t
 
   void snapshot_state( action_state_t* s, result_amount_type rt ) override
   {
-    fire_mage_spell_t::snapshot_state( s, rt );
     debug_cast<hot_streak_state_t*>( s )->hot_streak = last_hot_streak;
+    fire_mage_spell_t::snapshot_state( s, rt );
   }
 
   double composite_crit_chance() const override
@@ -2345,7 +2363,7 @@ struct icicle_t final : public frost_mage_spell_t
   icicle_t( util::string_view n, mage_t* p ) :
     frost_mage_spell_t( n, p, p->find_spell( 148022 ) )
   {
-    background = true;
+    background = track_shatter = true;
     callbacks = false;
     base_dd_min = base_dd_max = 1.0;
 
@@ -2453,9 +2471,7 @@ struct arcane_barrage_t final : public arcane_mage_spell_t
 
     arcane_mage_spell_t::execute();
 
-    // Arcane Barrage restores 1% mana per charge in game and states that 2% is restored
-    // in the tooltip. The data has a value of 1.5, so this is likely a rounding issue.
-    double mana_pct = p()->buffs.arcane_charge->check() * 0.01 * std::floor( p()->spec.arcane_barrage_3->effectN( 1 ).base_value() );
+    double mana_pct = p()->buffs.arcane_charge->check() * 0.01 * p()->spec.arcane_barrage_3->effectN( 1 ).percent();
     p()->resource_gain( RESOURCE_MANA, p()->resources.max[ RESOURCE_MANA ] * mana_pct, p()->gains.arcane_barrage, this );
 
     p()->buffs.arcane_charge->expire();
@@ -2756,8 +2772,8 @@ struct arcane_missiles_t final : public arcane_mage_spell_t
   // channel.
   void snapshot_state( action_state_t* s, result_amount_type rt ) override
   {
-    arcane_mage_spell_t::snapshot_state( s, rt );
     debug_cast<am_state_t*>( s )->tick_time_multiplier = p()->buffs.clearcasting_channel->check() ? 1.0 + cc_tick_time_reduction : 1.0;
+    arcane_mage_spell_t::snapshot_state( s, rt );
   }
 
   timespan_t composite_dot_duration( const action_state_t* s ) const override
@@ -2796,7 +2812,7 @@ struct arcane_missiles_t final : public arcane_mage_spell_t
     arcane_mage_spell_t::execute();
   }
 
-  void trigger_dot( action_state_t* s )
+  void trigger_dot( action_state_t* s ) override
   {
     dot_t* d = get_dot( s->target );
     timespan_t tick_remains = d->time_to_next_full_tick();
@@ -3493,11 +3509,18 @@ struct flamestrike_t final : public hot_streak_spell_t
 
     if ( flame_patch )
     {
-      p()->ground_aoe_expiration[ AOE_FLAME_PATCH ] = sim->current_time() + flame_patch_duration;
+      // Flame Patch does not gain its extra ticks at exact haste breakpoints. Instead, extra
+      // ticks occur with an increasing probability as haste approaches the expected breakpoint
+      // with a 100% probability after the breakpoint is reached. This is likely due to technical
+      // details of how Flame Patch or ground effects in general are implemented. For Flame Patch,
+      // adding uniform delay to the duration between 5 ms and 105 ms gives an average number of
+      // ticks that closely matches the observed values at haste levels near the breakpoints.
+      timespan_t ground_aoe_duration = flame_patch_duration + rng().range( 5_ms, 105_ms );
+      p()->ground_aoe_expiration[ AOE_FLAME_PATCH ] = sim->current_time() + ground_aoe_duration;
 
       make_event<ground_aoe_event_t>( *sim, p(), ground_aoe_params_t()
         .target( target )
-        .duration( flame_patch_duration )
+        .duration( ground_aoe_duration )
         .action( flame_patch )
         .hasted( ground_aoe_params_t::SPELL_SPEED ) );
     }
@@ -4162,6 +4185,7 @@ struct icy_veins_t final : public frost_mage_spell_t
   {
     frost_mage_spell_t::execute();
 
+    p()->buffs.slick_ice->expire();
     p()->buffs.icy_veins->trigger();
     p()->buffs.rune_of_power->trigger();
   }
@@ -4779,7 +4803,7 @@ struct scorch_t final : public fire_mage_spell_t
   {
     double m = fire_mage_spell_t::composite_da_multiplier( s );
 
-    if ( s->target->health_percentage() < p()->talents.searing_touch->effectN( 1 ).base_value() )
+    if ( searing_touch_active( s->target ) )
       m *= 1.0 + p()->talents.searing_touch->effectN( 2 ).percent();
 
     return m;
@@ -4789,7 +4813,7 @@ struct scorch_t final : public fire_mage_spell_t
   {
     double c = fire_mage_spell_t::composite_target_crit_chance( target );
 
-    if ( target->health_percentage() < p()->talents.searing_touch->effectN( 1 ).base_value() )
+    if ( searing_touch_active( target ) )
       c += 1.0;
 
     return c;
@@ -4972,15 +4996,14 @@ struct touch_of_the_magi_explosion_t final : public arcane_mage_spell_t
     snapshot_flags |= STATE_TGT_MUL_DA;
   }
 
-  double composite_target_multiplier( player_t* target ) const override
+  double composite_target_da_multiplier( player_t* target ) const override
   {
-    double m = arcane_mage_spell_t::composite_target_multiplier( target );
+    // Touch of the Magi explosion ignores debuffs with effect subtype 270 (Modify
+    // Damage Taken% from Caster) or 271 (Modify Damage Taken% from Caster's Spells).
+    double m = composite_target_damage_vulnerability( target );
 
-    // It seems that TotM explosion only double dips on target based damage reductions
-    // and not target based damage increases.
-    m = std::min( m, 1.0 );
-
-    return m;
+    // For some reason, Touch of the Magi triple dips damage reductions.
+    return m * std::min( m, 1.0 );
   }
 };
 
@@ -5695,12 +5718,14 @@ void mage_t::create_actions()
 
 void mage_t::create_options()
 {
-  add_option( opt_timespan( "firestarter_time", options.firestarter_time ) );
+  add_option( opt_float( "mage.firestarter_duration_multiplier", options.firestarter_duration_multiplier ) );
+  add_option( opt_float( "mage.searing_touch_duration_multiplier", options.searing_touch_duration_multiplier ) );
   add_option( opt_timespan( "frozen_duration", options.frozen_duration ) );
   add_option( opt_timespan( "scorch_delay", options.scorch_delay ) );
-  add_option( opt_timespan( "focus_magic_interval", options.focus_magic_interval, 0_ms, timespan_t::max() ) );
-  add_option( opt_float( "focus_magic_relstddev", options.focus_magic_relstddev, 0.0, std::numeric_limits<double>::max() ) );
-  add_option( opt_float( "focus_magic_crit_chance", options.focus_magic_crit_chance, 0.0, 1.0 ) );
+  add_option( opt_timespan( "mage.focus_magic_interval", options.focus_magic_interval, 0_ms, timespan_t::max() ) );
+  add_option( opt_float( "mage.focus_magic_relstddev", options.focus_magic_relstddev, 0.0, std::numeric_limits<double>::max() ) );
+  add_option( opt_float( "mage.focus_magic_crit_chance", options.focus_magic_crit_chance, 0.0, 1.0 ) );
+  add_option( opt_bool( "mage.focus_magic_trade", options.focus_magic_trade ) );
   add_option( opt_timespan( "mirrors_of_torment_interval", options.mirrors_of_torment_interval, 1_ms, timespan_t::max() ) );
   add_option( opt_timespan( "arcane_missiles_chain_delay", options.arcane_missiles_chain_delay, 0_ms, timespan_t::max() ) );
   add_option( opt_float( "arcane_missiles_chain_relstddev", options.arcane_missiles_chain_relstddev, 0.0, std::numeric_limits<double>::max() ) );
@@ -5714,8 +5739,8 @@ std::string mage_t::create_profile( save_e save_type )
 
   if ( save_type & SAVE_PLAYER )
   {
-    if ( options.firestarter_time > 0_ms )
-      profile += "firestarter_time=" + util::to_string( options.firestarter_time.total_seconds() ) + "\n";
+    if ( options.focus_magic_trade )
+      profile += "mage.focus_magic_trade=1\n";
   }
 
   return profile;
@@ -6563,11 +6588,17 @@ void mage_t::arise()
     events.enlightened = make_event<events::enlightened_event_t>( *sim, *this, first_tick );
   }
 
-  if ( talents.focus_magic->ok() && options.focus_magic_interval > 0_ms )
+  if ( talents.focus_magic->ok() )
   {
-    timespan_t period = options.focus_magic_interval;
-    period = std::max( 1_ms, rng().gauss( period, period * options.focus_magic_relstddev ) );
-    events.focus_magic = make_event<events::focus_magic_event_t>( *sim, *this, period );
+    if ( options.focus_magic_interval > 0_ms )
+    {
+      timespan_t period = options.focus_magic_interval;
+      period = std::max( 1_ms, rng().gauss( period, period * options.focus_magic_relstddev ) );
+      events.focus_magic = make_event<events::focus_magic_event_t>( *sim, *this, period );
+    }
+
+    if ( options.focus_magic_trade && !external_buffs.focus_magic )
+      player_t::buffs.focus_magic->override_buff();
   }
 
   if ( talents.from_the_ashes->ok() )
@@ -6626,35 +6657,53 @@ std::unique_ptr<expr_t> mage_t::create_action_expression( action_t& action, util
   // Firestarter expressions ==================================================
   if ( splits.size() == 2 && util::str_compare_ci( splits[ 0 ], "firestarter" ) )
   {
+    double firestarter_pct = 100.0 - ( 100.0 - talents.firestarter->effectN( 1 ).base_value() ) * options.firestarter_duration_multiplier;
+
     if ( util::str_compare_ci( splits[ 1 ], "active" ) )
     {
-      return make_fn_expr( name_str, [ this, &action ]
-      {
-        if ( !talents.firestarter->ok() )
-          return false;
+      if ( !talents.firestarter->ok() )
+        return expr_t::create_constant( name_str, false );
 
-        if ( options.firestarter_time > 0_ms )
-          return sim->current_time() < options.firestarter_time;
-        else
-          return action.target->health_percentage() > talents.firestarter->effectN( 1 ).base_value();
-      } );
+      return make_fn_expr( name_str, [ &action, firestarter_pct ]
+      { return action.target->health_percentage() > firestarter_pct; } );
     }
 
     if ( util::str_compare_ci( splits[ 1 ], "remains" ) )
     {
-      return make_fn_expr( name_str, [ this, &action ]
-      {
-        if ( !talents.firestarter->ok() )
-          return 0.0;
+      if ( !talents.firestarter->ok() )
+        return expr_t::create_constant( name_str, 0.0 );
 
-        if ( options.firestarter_time > 0_ms )
-          return std::max( options.firestarter_time - sim->current_time(), 0_ms ).total_seconds();
-        else
-          return action.target->time_to_percent( talents.firestarter->effectN( 1 ).base_value() ).total_seconds();
-      } );
+      return make_fn_expr( name_str, [ &action, firestarter_pct ]
+      { return action.target->time_to_percent( firestarter_pct ).total_seconds(); } );
     }
 
     throw std::invalid_argument( fmt::format( "Unknown firestarer operation '{}'", splits[ 1 ] ) );
+  }
+
+  // Searing Touch expressions ==================================================
+  if ( splits.size() == 2 && util::str_compare_ci( splits[ 0 ], "searing_touch" ) )
+  {
+    double searing_touch_pct = talents.searing_touch->effectN( 1 ).base_value() * options.searing_touch_duration_multiplier;
+
+    if ( util::str_compare_ci( splits[ 1 ], "active" ) )
+    {
+      if ( !talents.searing_touch->ok() )
+        return expr_t::create_constant( name_str, false );
+
+      return make_fn_expr( name_str, [ &action, searing_touch_pct ]
+      { return action.target->health_percentage() < searing_touch_pct; } );
+    }
+
+    if ( util::str_compare_ci( splits[ 1 ], "remains" ) )
+    {
+      if ( !talents.searing_touch->ok() )
+        return expr_t::create_constant( name_str, std::numeric_limits<double>::max() );
+
+      return make_fn_expr( name_str, [ &action, searing_touch_pct ]
+      { return action.target->time_to_percent( searing_touch_pct ).total_seconds(); } );
+    }
+
+    throw std::invalid_argument( fmt::format( "Unknown searing_touch operation '{}'", splits[ 1 ] ) );
   }
 
   return player_t::create_action_expression( action, name );

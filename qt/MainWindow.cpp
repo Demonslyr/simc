@@ -9,11 +9,10 @@
 #include "WebView.hpp"
 #include "dbc/dbc.hpp"
 #include "dbc/spell_query/spell_data_expr.hpp"
+#include "interfaces/bcp_api.hpp"
 #include "interfaces/sc_http.hpp"
 #include "player/sc_player.hpp"
 #include "report/reports.hpp"
-#include "sim/sc_sim.hpp"
-#include "util/git_info.hpp"
 #include "sc_AddonImportTab.hpp"
 #include "sc_OptionsTab.hpp"
 #include "sc_SampleProfilesTab.hpp"
@@ -21,7 +20,10 @@
 #include "sc_SimulationThread.hpp"
 #include "sc_SpellQueryTab.hpp"
 #include "sc_WelcomeTab.hpp"
+#include "sc_importWindow.hpp"
+#include "sim/sc_sim.hpp"
 #include "simulationcraftqt.hpp"
+#include "util/git_info.hpp"
 #include "util/sc_mainwindowcommandline.hpp"
 
 #include <QString>
@@ -287,9 +289,7 @@ SC_MainWindow::SC_MainWindow( QWidget* parent )
   setAcceptDrops( true );
   loadHistory();
 
-#if defined( Q_OS_MAC ) || defined( VS_NEW_BUILD_SYSTEM )
-  new BattleNetImportWindow( this );
-#endif /* Q_OS_MAC || VS_NEW_BUILD_SYSTEM */
+  new BattleNetImportWindow( this, false );
 }
 
 void SC_MainWindow::createCmdLine()
@@ -575,7 +575,7 @@ void SC_MainWindow::deleteSim( std::shared_ptr<sim_t>& sim, SC_TextEdit* append_
         }
       }
       directoriesWithPermissionIssues.unique();
-      if ( filesThatAreDirectories.size() != 0 )
+      if ( !filesThatAreDirectories.empty() )
       {
         suggestions.append(
             "The following files are directories, SimulationCraft uses these as files, please rename them\n" );
@@ -585,7 +585,7 @@ void SC_MainWindow::deleteSim( std::shared_ptr<sim_t>& sim, SC_TextEdit* append_
       {
         suggestions.append( "   " + ( *it ).toStdString() + "\n" );
       }
-      if ( filesWithPermissionIssues.size() != 0 )
+      if ( !filesWithPermissionIssues.empty() )
       {
         suggestions.append(
             "The following files have permission issues and are unwritable\n SimulationCraft needs to write to these "
@@ -596,7 +596,7 @@ void SC_MainWindow::deleteSim( std::shared_ptr<sim_t>& sim, SC_TextEdit* append_
       {
         suggestions.append( "   " + ( *it ).toStdString() + "\n" );
       }
-      if ( directoriesWithPermissionIssues.size() != 0 )
+      if ( !directoriesWithPermissionIssues.empty() )
       {
         suggestions.append(
             "The following directories have permission issues and are unwritable\n meaning SimulationCraft cannot "
@@ -661,21 +661,21 @@ void SC_MainWindow::startNewImport( const QString& region, const QString& realm,
   }
   simProgress = 0;
   import_sim  = initSim();
-  importThread->start( import_sim, region, realm, character, specialization );
-  simulateTab->add_Text( defaultSimulateText, tr( "Importing" ) );
-}
 
-void SC_MainWindow::startImport( int tab, const QString& url )
-{
-  if ( importRunning() )
+#ifndef SC_NO_NETWORKING
+  // Try to import the API key from the GUI options
+  if ( import_sim->apikey.empty() )
   {
-    stopImport();
-    return;
+    std::string apikey = optionsTab->get_api_key().toStdString();
+
+    if ( bcp_api::validate_api_key( apikey ) )
+    {
+      import_sim->apikey = apikey;
+    }
   }
-  simProgress = 0;
-  import_sim  = initSim();
-  importThread->start( import_sim, tab, url, optionsTab->get_db_order(), optionsTab->get_active_spec(),
-                       optionsTab->get_player_role(), optionsTab->get_api_key() );
+#endif
+
+  importThread->start( import_sim, region, realm, character, specialization );
   simulateTab->add_Text( defaultSimulateText, tr( "Importing" ) );
 }
 
@@ -1053,7 +1053,7 @@ void SC_MainWindow::simulateFinished( std::shared_ptr<sim_t> sim )
   if ( simulationQueue->isEmpty() && !importRunning() )
     timer->stop();
 
-  deleteSim( sim, simulateThread->success == true ? nullptr : logText );
+  deleteSim( sim, simulateThread->success ? nullptr : logText );
   SC_MainWindow::sim = nullptr;
 
   if ( !simulationQueue->isEmpty() )

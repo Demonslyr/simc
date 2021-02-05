@@ -82,11 +82,12 @@ struct enemy_t : public player_t
   pet_t* create_pet( util::string_view add_name, util::string_view pet_type = "" ) override;
   void create_pets() override;
   double health_percentage() const override;
+  timespan_t time_to_percent( double ) const override;
   void combat_begin() override;
   void combat_end() override;
   virtual void recalculate_health();
   void demise() override;
-  std::unique_ptr<expr_t> create_expression( util::string_view type ) override;
+  std::unique_ptr<expr_t> create_expression( util::string_view expression_str ) override;
   timespan_t available() const override
   {
     return waiting_time;
@@ -94,7 +95,7 @@ struct enemy_t : public player_t
 
   void actor_changed() override
   {
-    if ( sim->overrides.target_health.size() > 0 )
+    if ( !sim->overrides.target_health.empty() )
     {
       initial_health =
           static_cast<double>( sim->overrides.target_health[ enemy_id % sim->overrides.target_health.size() ] );
@@ -164,7 +165,7 @@ struct enemy_action_t : public ACTION_TYPE
   std::string filter_options_list( util::string_view options_str )
   {
     auto splits = util::string_split<util::string_view>( options_str, "," );
-    std::string filtered_options    = "";
+    std::string filtered_options;
     for ( auto split : splits )
     {
       if ( !util::str_in_str_ci( split, "if=" ) )
@@ -344,7 +345,7 @@ struct enemy_action_driver_t : public CHILD_ACTION_TYPE
 
     this->interrupt_auto_attack = false;
     // if there are no valid targets, disable
-    if ( ch_list.size() < 1 )
+    if ( ch_list.empty() )
       this->background = true;
   }
 
@@ -381,7 +382,7 @@ struct enemy_action_driver_t : public CHILD_ACTION_TYPE
           rt_list.erase( rt_list.begin() + element );
 
           // infinte loop check
-          if ( rt_list.size() == 0 )
+          if ( rt_list.empty() )
             break;
         }
       }
@@ -488,7 +489,7 @@ struct auto_attack_t : public enemy_action_t<attack_t>
       mh_list.push_back( mh );
     }
 
-    if ( mh_list.size() > 0 )
+    if ( !mh_list.empty() )
       p->main_hand_attack = mh_list[ 0 ];
   }
 
@@ -948,7 +949,7 @@ struct add_t : public pet_t
 
       const double health_pct = health_percentage();
       const double scale      = ( health_pct - percent ) / ( 100 - health_pct );
-      return ( duration - expiration->remains() ) * scale;
+      return std::max( 0_ms, ( duration - expiration->remains() ) * scale );
     }
 
     return pet_t::time_to_percent( percent );
@@ -1097,7 +1098,7 @@ struct tank_dummy_enemy_t : public enemy_t
       // results but the one that is correct will generally be the one that has the ArmorConstMod value being greater
       // than 1.000 9.0 values here
 
-      /* 
+      /*
         Level 60 Base/open world: 2500.000 (Level 60 Armor mitigation constants (K-values))
         Level 60 M0/M+: 2455.0 (ExpectedStatModID: 176; ArmorConstMod: 0.982)
         Castle Nathria LFR: 2500.0 (ExpectedStatModID: 181; ArmorConstMod: 1.000)
@@ -1195,7 +1196,7 @@ void enemy_t::init_base_stats()
 
   base.attack_crit_chance = 0.05;
 
-  if ( sim->overrides.target_health.size() > 0 )
+  if ( !sim->overrides.target_health.empty() )
   {
     initial_health =
         static_cast<double>( sim->overrides.target_health[ enemy_id % sim->overrides.target_health.size() ] );
@@ -1207,7 +1208,7 @@ void enemy_t::init_base_stats()
 
   if ( this == sim->target )
   {
-    if ( sim->overrides.target_health.size() > 0 || fixed_health > 0 )
+    if ( !sim->overrides.target_health.empty() || fixed_health > 0 )
     {
       sim->print_debug( "Setting vary_combat_length forcefully to 0.0 because fixed health simulation was detected." );
 
@@ -1246,10 +1247,13 @@ void enemy_t::create_buffs()
 {
   player_t::create_buffs();
 
-  for ( unsigned int i = 1; i <= 10; ++i )
+  if ( !sim->fixed_time && fixed_health_percentage == 0.0 )
   {
-    buffs_health_decades.push_back(
+    for ( unsigned int i = 1; i <= 10; ++i )
+    {
+      buffs_health_decades.push_back(
         make_buff( this, fmt::format( "Health Decade ({} - {})", ( i - 1 ) * 10, i * 10 ) ) );
+    }
   }
 }
 
@@ -1316,7 +1320,7 @@ void enemy_t::generate_heal_raid_event()
 
 std::string enemy_t::generate_tank_action_list( tank_dummy_e tank_dummy )
 {
-  std::string als                 = "";
+  std::string als;
   constexpr size_t numTankDummies = static_cast<size_t>( tank_dummy_e::MAX );
   //                               NONE, WEAK,           DUNGEON,  RAID,   HEROIC, MYTHIC
   //                               NONE, Normal Dungeon, Mythic 0, Normal, Heroic, Mythic
@@ -1330,7 +1334,7 @@ std::string enemy_t::generate_tank_action_list( tank_dummy_e tank_dummy )
   int background_spell_damage[ numTankDummies ] = { 0, 257, 455, 1188, 1627, 2648 };  // Base background dot damage (currently set to 0.04x auto damage)
 
   size_t tank_dummy_index = static_cast<size_t>( tank_dummy );
-  als += "/auto_attack,damage=" + util::to_string( aa_damage[ tank_dummy_index ] ) + 
+  als += "/auto_attack,damage=" + util::to_string( aa_damage[ tank_dummy_index ] ) +
          ",range=" + util::to_string( floor( aa_damage[ tank_dummy_index ] * 0.02 ) ) + ",attack_speed=1.5,aoe_tanks=1";
   als += "/melee_nuke,damage=" + util::to_string( dummy_strike_damage[ tank_dummy_index ] ) +
          ",range=" + util::to_string( floor( dummy_strike_damage[ tank_dummy_index ] * 0.02 ) ) + ",attack_speed=2,cooldown=25,aoe_tanks=1";
@@ -1351,7 +1355,7 @@ void enemy_t::add_tank_heal_raid_event( tank_dummy_e tank_dummy )
   std::string heal_raid_event = fmt::format( "heal,name=tank_heal,amount={},period=0.5,duration=0,player_if=role.tank",
                                              heal_value[ tank_dummy_index ] );
   sim->raid_events_str += "/" + heal_raid_event;
-  std::string::size_type cut_pt = heal_raid_event.find_first_of( "," );
+  std::string::size_type cut_pt = heal_raid_event.find_first_of( ',' );
   auto heal_options             = heal_raid_event.substr( cut_pt + 1 );
   auto heal_name                = heal_raid_event.substr( 0, cut_pt );
   auto raid_event               = raid_event_t::create( sim, heal_name, heal_options );
@@ -1428,7 +1432,7 @@ void enemy_t::init_action_list()
     // Only do this if the user hasn't specified additional action lists beyond precombat & default
     if ( tanks.size() > 1 && action_priority_list.size() < 3 )
     {
-      std::string new_action_list_str = "";
+      std::string new_action_list_str;
 
       // split the action_list_str into individual actions so we can modify each later
       auto splits = util::string_split<util::string_view>( action_list_str, "/" );
@@ -1498,7 +1502,7 @@ double enemy_t::resource_loss( resource_e resource_type, double amount, gain_t* 
   double r        = player_t::resource_loss( resource_type, amount, source, action );
   int post_health = static_cast<int>( resources.pct( RESOURCE_HEALTH ) * 100 ) / 10;
 
-  if ( pre_health < 10 && pre_health > post_health && post_health >= 0 )
+  if ( buffs_health_decades.size() && pre_health < 10 && pre_health > post_health && post_health >= 0 )
   {
     buffs_health_decades.at( post_health + 1 )->expire();
     buffs_health_decades.at( post_health )->trigger();
@@ -1570,6 +1574,24 @@ double enemy_t::health_percentage() const
   return resources.pct( RESOURCE_HEALTH ) * 100;
 }
 
+// enemy_t::time_to_percent() ===============================================
+
+timespan_t enemy_t::time_to_percent( double percent ) const
+{
+  // time_to_pct_0, or time_to_die, should probably ignore fixed_health_percentage
+  if ( fixed_health_percentage > 0 && percent != 0 )
+  {
+    // If we're at or below the given health percentage, it's already been reached
+    if ( fixed_health_percentage <= percent )
+      return timespan_t::zero();
+    // Otherwise, it will never be reached, so return something unreachable
+    else
+      return sim -> expected_iteration_time * 2;
+  }
+
+  return player_t::time_to_percent( percent );
+}
+
 // enemy_t::recalculate_health ==============================================
 
 void enemy_t::recalculate_health()
@@ -1615,20 +1637,20 @@ bool enemy_t::taunt( player_t* source )
 
 // enemy_t::create_expression ===============================================
 
-std::unique_ptr<expr_t> enemy_t::create_expression( util::string_view name_str )
+std::unique_ptr<expr_t> enemy_t::create_expression( util::string_view expression_str )
 {
-  if ( name_str == "adds" )
-    return make_mem_fn_expr( name_str, active_pets, &std::vector<pet_t*>::size );
+  if ( expression_str == "adds" )
+    return make_mem_fn_expr( expression_str, active_pets, &std::vector<pet_t*>::size );
 
   // override enemy health.pct expression
-  if ( name_str == "health.pct" )
-    return make_mem_fn_expr( name_str, *this, &enemy_t::health_percentage );
+  if ( expression_str == "health.pct" )
+    return make_mem_fn_expr( expression_str, *this, &enemy_t::health_percentage );
 
   // current target (for tank/taunting purposes)
-  if ( name_str == "current_target" )
-    return make_ref_expr( name_str, current_target );
+  if ( expression_str == "current_target" )
+    return make_ref_expr( expression_str, current_target );
 
-  auto splits = util::string_split<util::string_view>( name_str, "." );
+  auto splits = util::string_split<util::string_view>( expression_str, "." );
 
   if ( splits[ 0 ] == "current_target" )
   {
@@ -1680,7 +1702,7 @@ std::unique_ptr<expr_t> enemy_t::create_expression( util::string_view name_str )
     }
   }
 
-  return player_t::create_expression( name_str );
+  return player_t::create_expression( expression_str );
 }
 
 // enemy_t::combat_begin ====================================================
@@ -1689,7 +1711,8 @@ void enemy_t::combat_begin()
 {
   player_t::combat_begin();
 
-  buffs_health_decades[ 9 ]->trigger();
+  if ( buffs_health_decades.size() )
+    buffs_health_decades[ 9 ]->trigger();
 }
 
 // enemy_t::combat_end ======================================================
@@ -1698,7 +1721,7 @@ void enemy_t::combat_end()
 {
   player_t::combat_end();
 
-  if ( !sim->overrides.target_health.size() )
+  if ( sim->overrides.target_health.empty() )
     recalculate_health();
 }
 
@@ -1706,7 +1729,7 @@ void enemy_t::demise()
 {
   if ( this == sim->target )
   {
-    if ( sim->current_iteration != 0 || sim->overrides.target_health.size() > 0 || fixed_health > 0 )
+    if ( sim->current_iteration != 0 || !sim->overrides.target_health.empty() || fixed_health > 0 )
       // For the main target, end simulation on death.
       sim->cancel_iteration();
   }
