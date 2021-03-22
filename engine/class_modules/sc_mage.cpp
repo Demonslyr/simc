@@ -482,7 +482,6 @@ public:
     gain_t* evocation;
     gain_t* mana_gem;
     gain_t* arcane_barrage;
-    gain_t* mirrors_of_torment;
   } gains;
 
   // Options
@@ -859,6 +858,7 @@ public:
   void      trigger_evocation( timespan_t duration_override = timespan_t::min(), bool hasted = true );
   void      trigger_arcane_charge( int stacks = 1 );
   bool      trigger_crowd_control( const action_state_t* s, spell_mechanic type, timespan_t duration = timespan_t::min() );
+  void      trigger_disciplinary_command( school_e );
 };
 
 namespace pets {
@@ -1202,9 +1202,21 @@ struct rune_of_power_t final : public buff_t
   {
     auto mage = debug_cast<mage_t*>( player );
     mage->distance_from_rune = 0.0;
-    mage->buffs.disciplinary_command_arcane->trigger();
+    mage->trigger_disciplinary_command( data().get_school_type() );
 
     return buff_t::trigger( stacks, value, chance, duration );
+  }
+
+  void expire_override( int stacks, timespan_t duration ) override
+  {
+    buff_t::expire_override( stacks, duration );
+
+    // When the Rune of Power buff fades at the same time as its area trigger, there is a
+    // chance that the buff will fade first and the area trigger will reapply the buff for
+    // an instant, which counts as executing an Arcane spell.
+    auto mage = debug_cast<mage_t*>( player );
+    if ( duration == 0_ms && rng().roll( 0.5 ) )
+      mage->trigger_disciplinary_command( data().get_school_type() );
   }
 };
 
@@ -1214,14 +1226,12 @@ struct mirrors_of_torment_t final : public buff_t
   int successful_triggers;
 
   // Spec-specific effects
-  double mana_pct;
   timespan_t reduction;
 
   mirrors_of_torment_t( mage_td_t* td ) :
     buff_t( *td, "mirrors_of_torment", td->source->find_spell( 314793 ) ),
     icd( td->source->get_cooldown( "mirrors_of_torment_icd" ) ),
     successful_triggers(),
-    mana_pct(),
     reduction()
   {
     set_cooldown( 0_ms );
@@ -1234,9 +1244,6 @@ struct mirrors_of_torment_t final : public buff_t
 
     switch ( p->specialization() )
     {
-      case MAGE_ARCANE:
-        mana_pct = p->find_spell( 345417 )->effectN( 1 ).percent();
-        break;
       case MAGE_FIRE:
         reduction = -1000 * data().effectN( 2 ).time_value();
         break;
@@ -1270,7 +1277,7 @@ struct mirrors_of_torment_t final : public buff_t
       switch ( p->specialization() )
       {
         case MAGE_ARCANE:
-          p->resource_gain( RESOURCE_MANA, p->resources.max[ RESOURCE_MANA ] * mana_pct, p->gains.mirrors_of_torment );
+          p->trigger_delayed_buff( p->buffs.clearcasting, 1.0, 0_ms );
           break;
         case MAGE_FIRE:
           p->cooldowns.fire_blast->adjust( reduction );
@@ -1687,24 +1694,7 @@ public:
     if ( !background && affected_by.ice_floes && time_to_execute > 0_ms )
       p()->buffs.ice_floes->decrement();
 
-    // TODO: Verify how this effect interacts with spells that have multiple
-    // schools and how it interacts with spells that are not Mage spells.
-    if ( !background && p()->runeforge.disciplinary_command.ok() )
-    {
-      if ( dbc::is_school( get_school(), SCHOOL_ARCANE ) )
-        p()->buffs.disciplinary_command_arcane->trigger();
-      if ( dbc::is_school( get_school(), SCHOOL_FROST ) )
-        p()->buffs.disciplinary_command_frost->trigger();
-      if ( dbc::is_school( get_school(), SCHOOL_FIRE ) )
-        p()->buffs.disciplinary_command_fire->trigger();
-      if ( p()->buffs.disciplinary_command_arcane->check() && p()->buffs.disciplinary_command_frost->check() && p()->buffs.disciplinary_command_fire->check() )
-      {
-        p()->buffs.disciplinary_command->trigger();
-        p()->buffs.disciplinary_command_arcane->expire();
-        p()->buffs.disciplinary_command_frost->expire();
-        p()->buffs.disciplinary_command_fire->expire();
-      }
-    }
+    p()->trigger_disciplinary_command( get_school() );
   }
 
   void impact( action_state_t* s ) override
@@ -2316,6 +2306,9 @@ struct frost_mage_spell_t : public mage_spell_t
       snapshot_impact_state( s, amount_type( s ) );
       s->result = calculate_impact_result( s );
       s->result_amount = calculate_impact_direct_amount( s );
+
+      // Spells that calculate on impact actually execute a second spell when they impact.
+      p()->trigger_disciplinary_command( get_school() );
     }
 
     mage_spell_t::impact( s );
@@ -3819,13 +3812,14 @@ struct frozen_orb_t final : public frost_mage_spell_t
     return t;
   }
 
-  void adjust_orb_count( timespan_t duration, int& counter )
+  void adjust_orb_count( timespan_t duration, bool active )
   {
+    int& counter = active ? p()->state.active_frozen_orbs : p()->state.inactive_frozen_orbs;
     counter++;
-    make_event( *sim, duration, [ this, &counter ]
+    make_event( *sim, duration, [ this, &counter, active ]
     {
       counter--;
-      if ( p()->state.active_frozen_orbs + p()->state.inactive_frozen_orbs == 0 )
+      if ( p()->state.active_frozen_orbs + p()->state.inactive_frozen_orbs == 0 || active && p()->bugs )
         p()->buffs.freezing_winds->expire();
     } );
   }
@@ -3834,7 +3828,7 @@ struct frozen_orb_t final : public frost_mage_spell_t
   {
     frost_mage_spell_t::execute();
 
-    adjust_orb_count( travel_time(), p()->state.inactive_frozen_orbs );
+    adjust_orb_count( travel_time(), false );
 
     if ( background )
       return;
@@ -3854,7 +3848,7 @@ struct frozen_orb_t final : public frost_mage_spell_t
     timespan_t duration = ( pulse_count - 1 ) * pulse_time;
     p()->ground_aoe_expiration[ AOE_FROZEN_ORB ] = sim->current_time() + duration;
 
-    adjust_orb_count( duration, p()->state.active_frozen_orbs );
+    adjust_orb_count( duration, true );
 
     make_event<ground_aoe_event_t>( *sim, p(), ground_aoe_params_t()
       .pulse_time( pulse_time )
@@ -4317,7 +4311,7 @@ struct living_bomb_t final : public fire_mage_spell_t
 
 // Meteor Spell =============================================================
 
-// Implementation details from Celestalon:
+// Old implementation details from Celestalon:
 // http://blue.mmo-champion.com/topic/318876-warlords-of-draenor-theorycraft-discussion/#post301
 // Meteor is split over a number of spell IDs
 // - Meteor (id=153561) is the talent spell, the driver
@@ -4325,6 +4319,9 @@ struct living_bomb_t final : public fire_mage_spell_t
 // - Meteor Burn (id=155158) is the ground effect tick damage
 // - Meteor Burn (id=175396) provides the tooltip's burn duration
 // - Meteor (id=177345) contains the time between cast and impact
+// 2021-02-23 PTR: Meteor now snapshots damage on impact.
+// - time until impact is unchanged.
+// - Meteor (id=351140) is the new initial impact damage.
 struct meteor_burn_t final : public fire_mage_spell_t
 {
   meteor_burn_t( util::string_view n, mage_t* p ) :
@@ -4350,7 +4347,7 @@ struct meteor_impact_t final : public fire_mage_spell_t
   timespan_t meteor_burn_pulse_time;
 
   meteor_impact_t( util::string_view n, mage_t* p, action_t* burn ) :
-    fire_mage_spell_t( n, p, p->find_spell( 153564 ) ),
+    fire_mage_spell_t( n, p, p->find_spell( 351140 ) ),
     meteor_burn( burn ),
     meteor_burn_duration( p->find_spell( 175396 )->duration() ),
     meteor_burn_pulse_time( p->find_spell( 155158 )->effectN( 1 ).period() )
@@ -4406,9 +4403,8 @@ struct meteor_t final : public fire_mage_spell_t
 
   timespan_t travel_time() const override
   {
-    timespan_t impact_time = meteor_delay * p()->cache.spell_speed();
-    timespan_t meteor_spawn = impact_time - impact_action->travel_time();
-    return std::max( meteor_spawn, 0_ms );
+    // Travel time cannot go lower than 1 second to give time for Meteor to visually fall.
+    return std::max( meteor_delay * p()->cache.spell_speed(), 1.0_s );
   }
 };
 
@@ -4642,11 +4638,8 @@ struct pyroblast_dot_t final : public fire_mage_spell_t
 
 struct pyroblast_t final : public hot_streak_spell_t
 {
-  action_t* pyroblast_dot;
-
   pyroblast_t( util::string_view n, mage_t* p, util::string_view options_str ) :
-    hot_streak_spell_t( n, p, p->find_specialization_spell( "Pyroblast" ) ),
-    pyroblast_dot()
+    hot_streak_spell_t( n, p, p->find_specialization_spell( "Pyroblast" ) )
   {
     parse_options( options_str );
     triggers.hot_streak = triggers.kindling = TT_MAIN_TARGET;
@@ -4655,8 +4648,8 @@ struct pyroblast_t final : public hot_streak_spell_t
 
     if ( p->spec.pyroblast_2->ok() )
     {
-      pyroblast_dot = get_action<pyroblast_dot_t>( "pyroblast_dot", p );
-      add_child( pyroblast_dot );
+      impact_action = get_action<pyroblast_dot_t>( "pyroblast_dot", p );
+      add_child( impact_action );
     }
   }
 
@@ -4700,11 +4693,6 @@ struct pyroblast_t final : public hot_streak_spell_t
     {
       consume_molten_skyfall( s->target );
       trigger_molten_skyfall();
-      if ( pyroblast_dot )
-      {
-        pyroblast_dot->set_target( s->target );
-        pyroblast_dot->execute();
-      }
     }
   }
 
@@ -5584,6 +5572,28 @@ bool mage_t::trigger_crowd_control( const action_state_t* s, spell_mechanic type
   return false;
 }
 
+void mage_t::trigger_disciplinary_command( school_e school )
+{
+  if ( runeforge.disciplinary_command.ok() && !buffs.disciplinary_command->check() )
+  {
+    // Only one school is triggered for Disciplinary Command if multiple are present.
+    // Schools are checked in order from the largest school mask to smallest.
+    if ( dbc::is_school( school, SCHOOL_ARCANE ) )
+      buffs.disciplinary_command_arcane->trigger();
+    else if ( dbc::is_school( school, SCHOOL_FROST ) )
+      buffs.disciplinary_command_frost->trigger();
+    else if ( dbc::is_school( school, SCHOOL_FIRE ) )
+      buffs.disciplinary_command_fire->trigger();
+    if ( buffs.disciplinary_command_arcane->check() && buffs.disciplinary_command_frost->check() && buffs.disciplinary_command_fire->check() )
+    {
+      buffs.disciplinary_command->trigger();
+      buffs.disciplinary_command_arcane->expire();
+      buffs.disciplinary_command_frost->expire();
+      buffs.disciplinary_command_fire->expire();
+    }
+  }
+}
+
 action_t* mage_t::create_action( util::string_view name, const std::string& options_str )
 {
   using namespace actions;
@@ -6253,10 +6263,9 @@ void mage_t::init_gains()
 {
   player_t::init_gains();
 
-  gains.evocation          = get_gain( "Evocation"          );
-  gains.mana_gem           = get_gain( "Mana Gem"           );
-  gains.arcane_barrage     = get_gain( "Arcane Barrage"     );
-  gains.mirrors_of_torment = get_gain( "Mirrors of Torment" );
+  gains.evocation      = get_gain( "Evocation"      );
+  gains.mana_gem       = get_gain( "Mana Gem"       );
+  gains.arcane_barrage = get_gain( "Arcane Barrage" );
 }
 
 void mage_t::init_procs()

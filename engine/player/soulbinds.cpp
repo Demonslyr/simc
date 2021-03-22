@@ -367,6 +367,12 @@ void first_strike( special_effect_t& effect )
       ->set_pct_buff_type( STAT_PCT_BUFF_CRIT );
   }
 
+  // The effect does not actually proc on periodic damage at all.
+  effect.proc_flags_ = effect.proc_flags() & ~PF_PERIODIC;
+
+  // The effect procs when damage actually happens.
+  effect.proc_flags2_ = PF2_ALL_HIT;
+
   new first_strike_cb_t( effect );
 }
 
@@ -698,6 +704,8 @@ void hammer_of_genesis( special_effect_t& effect )
       ->set_default_value_from_effect_type( A_HASTE_ALL )
       ->set_pct_buff_type( STAT_PCT_BUFF_HASTE );
   }
+
+  effect.proc_flags2_ = PF2_ALL_HIT | PF2_PERIODIC_DAMAGE;
 
   new hammer_of_genesis_cb_t( effect );
 }

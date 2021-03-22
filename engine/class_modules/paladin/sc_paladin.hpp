@@ -152,7 +152,6 @@ public:
     action_t* necrolord_shield_of_the_righteous;
     action_t* divine_toll;
     action_t* seasons[NUM_SEASONS];
-    action_t* blessing_of_summer_proc;
 
     // Conduit stuff
     action_t* virtuous_command;
@@ -209,10 +208,6 @@ public:
 
     // Covenants
     buff_t* vanquishers_hammer;
-    buff_t* blessing_of_summer;
-    buff_t* blessing_of_autumn;
-    buff_t* blessing_of_winter;
-    buff_t* blessing_of_spring;
 
     // Legendaries
     buff_t* vanguards_momentum;
@@ -532,7 +527,6 @@ public:
 
   // player stat functions
   virtual double    composite_player_multiplier( school_e ) const override;
-  virtual double    composite_player_heal_multiplier( const action_state_t* s ) const override;
   virtual double    composite_attribute_multiplier( attribute_e attr ) const override;
   virtual double    composite_attack_power_multiplier() const override;
   virtual double    composite_bonus_armor() const override;
@@ -564,7 +558,6 @@ public:
 
   // combat outcome functions
   virtual void      assess_damage( school_e, result_amount_type, action_state_t* ) override;
-  virtual void      assess_heal( school_e, result_amount_type, action_state_t* ) override;
   virtual void      target_mitigation( school_e, result_amount_type, action_state_t* ) override;
 
   virtual void      invalidate_cache( cache_e ) override;
@@ -776,7 +769,7 @@ public:
   struct affected_by_t
   {
     bool avenging_wrath, judgment, blessing_of_dawn, the_magistrates_judgment; // Shared
-    bool crusade, divine_purpose, hand_of_light, final_reckoning, reckoning; // Ret
+    bool crusade, divine_purpose, divine_purpose_cost, hand_of_light, final_reckoning, reckoning; // Ret
   } affected_by;
 
   // haste scaling bools
@@ -804,6 +797,7 @@ public:
     }
     this -> affected_by.judgment = this -> data().affected_by( p -> spells.judgment_debuff -> effectN( 1 ) );
     this -> affected_by.avenging_wrath = this -> data().affected_by( p -> spells.avenging_wrath -> effectN( 1 ) );
+    this -> affected_by.divine_purpose_cost = this -> data().affected_by( p -> spells.divine_purpose_buff -> effectN( 1 ) );
     this -> affected_by.divine_purpose = this -> data().affected_by( p -> spells.divine_purpose_buff -> effectN( 2 ) );
     this -> affected_by.blessing_of_dawn = this -> data().affected_by( p -> legendary.of_dusk_and_dawn -> effectN( 1 ).trigger() -> effectN( 1 ) );
     this -> affected_by.the_magistrates_judgment = this -> data().affected_by( p -> buffs.the_magistrates_judgment -> data().effectN( 1 ) );
@@ -890,19 +884,6 @@ public:
 
             p() -> active.reckoning -> set_target( s -> target );
             p() -> active.reckoning -> schedule_execute();
-          }
-        }
-
-        if ( ab::callbacks && p() -> buffs.blessing_of_summer -> up() )
-        {
-          if ( p() -> rng().roll( p() -> buffs.blessing_of_summer -> data().proc_chance() ) )
-          {
-            double amt = s -> result_amount;
-            double multiplier = p() -> buffs.blessing_of_summer -> data().effectN( 1 ).percent();
-            amt *= multiplier;
-            p() -> active.blessing_of_summer_proc -> base_dd_max = p() -> active.blessing_of_summer_proc -> base_dd_min = amt;
-            p() -> active.blessing_of_summer_proc -> set_target( s -> target );
-            p() -> active.blessing_of_summer_proc -> schedule_execute();
           }
         }
       }
@@ -1175,7 +1156,7 @@ struct holy_power_consumer_t : public Base
     }
 
     if ( ( is_divine_storm && ( ab::p() -> buffs.empyrean_power_azerite -> check() || ab::p() -> buffs.empyrean_power -> check() ) ) ||
-         ( ab::affected_by.divine_purpose && ab::p() -> buffs.divine_purpose -> check() ) )
+         ( ab::affected_by.divine_purpose_cost && ab::p() -> buffs.divine_purpose -> check() ) )
     {
       return 0.0;
     }
@@ -1214,11 +1195,10 @@ struct holy_power_consumer_t : public Base
       num_stacks = as<int>( hp_used );
 
     // as of 2020-11-08 magistrate's causes *extra* stacks?
+    // fixed at least for ret as of 9.0.5
     if ( p -> bugs && p -> buffs.the_magistrates_judgment -> up() )
     {
-      if ( p -> specialization() == PALADIN_RETRIBUTION )
-        num_stacks += 1;
-      else if ( p -> specialization() == PALADIN_PROTECTION &&
+      if ( p -> specialization() == PALADIN_PROTECTION &&
           is_wog && !p -> buffs.divine_purpose -> up() &&
           ( p -> buffs.shining_light_free -> up() || p -> buffs.royal_decree -> up() ) )
         num_stacks += 1;

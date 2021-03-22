@@ -2399,6 +2399,10 @@ void player_t::init_procs()
   sim->print_debug( "Initializing procs for {}.", *this );
 
   procs.parry_haste = get_proc( "parry_haste" );
+  procs.delayed_aa_cast = get_proc( "delayed_aa_cast" );
+  procs.delayed_aa_channel = get_proc( "delayed_aa_channel" );
+  procs.reset_aa_cast = get_proc( "reset_aa_cast" );
+  procs.reset_aa_channel = get_proc( "reset_aa_channel" );
 }
 
 void player_t::init_uptimes()
@@ -4010,9 +4014,13 @@ double player_t::composite_player_target_multiplier( player_t* target, school_e 
   if ( target->race == RACE_ABERRATION && buffs.damage_to_aberrations && buffs.damage_to_aberrations->check() )
     m *= 1.0 + buffs.damage_to_aberrations->stack_value();
 
-  // percentage not found in data, hardcoded for now. this buff is never triggered so use default_value.
-  if ( buffs.wild_hunt_tactics && target->health_percentage() > 75.0 )
-    m *= 1.0 + buffs.wild_hunt_tactics->default_value;
+  if ( buffs.wild_hunt_tactics )
+  {
+    double health_threshold = 100.0 - ( 100.0 - buffs.wild_hunt_tactics->data().effectN( 5 ).base_value() ) * sim->shadowlands_opts.wild_hunt_tactics_duration_multiplier;
+    // This buff is never triggered so use default_value.
+    if ( target->health_percentage() > health_threshold )
+      m *= 1.0 + buffs.wild_hunt_tactics->default_value;
+  }
 
   auto td = find_target_data( target );
   if ( td )
@@ -4028,7 +4036,12 @@ double player_t::composite_player_target_multiplier( player_t* target, school_e 
 
 double player_t::composite_player_heal_multiplier( const action_state_t* ) const
 {
-  return 1.0;
+  double m = 1.0;
+
+  if ( buffs.blessing_of_spring->up() )
+    m *= 1.0 + buffs.blessing_of_spring->data().effectN( 1 ).percent();
+
+  return m;
 }
 
 double player_t::composite_player_th_multiplier( school_e /* school */ ) const
@@ -4614,9 +4627,20 @@ void player_t::combat_begin()
     buffs.tyrants_immortality->trigger( buffs.tyrants_immortality->max_stack() );
   }
 
-  if ( buffs.power_infusion )
-    for ( auto t : external_buffs.power_infusion )
-      make_event( *sim, t, [ this ] { buffs.power_infusion->trigger(); } );
+  auto add_timed_buff_triggers = [ this ] ( const std::vector<timespan_t>& times, buff_t* buff )
+  {
+    if ( buff )
+      for ( auto t : times )
+        make_event( *sim, t, [ buff ] { buff->trigger(); } );
+  };
+
+  add_timed_buff_triggers( external_buffs.power_infusion, buffs.power_infusion );
+  add_timed_buff_triggers( external_buffs.benevolent_faerie, buffs.benevolent_faerie );
+  add_timed_buff_triggers( external_buffs.blessing_of_summer, buffs.blessing_of_summer ); // TODO: Add a way to specify different durations (The Long Summer conduit).
+  add_timed_buff_triggers( external_buffs.blessing_of_autumn, buffs.blessing_of_autumn );
+  add_timed_buff_triggers( external_buffs.blessing_of_winter, buffs.blessing_of_winter );
+  add_timed_buff_triggers( external_buffs.blessing_of_spring, buffs.blessing_of_spring );
+  add_timed_buff_triggers( external_buffs.conquerors_banner, buffs.conquerors_banner );
 
   if ( buffs.windfury_totem )
   {
@@ -6028,22 +6052,34 @@ double player_t::current_health() const
 
 timespan_t player_t::time_to_percent( double percent ) const
 {
+  // Adjust time_to_0/time_to_die expressions to point to the death_pct, if applicable
+  if ( percent == 0.0 )
+    percent = death_pct;
+
+  // Early exit if we're already at the relevant health percentage
+  if ( health_percentage() <= percent )
+    return timespan_t::zero();
+
   timespan_t time_to_percent;
-  double ttp;
 
   if ( iteration_dmg_taken > 0.0 && resources.base[ RESOURCE_HEALTH ] > 0 &&
        sim->current_time() >= timespan_t::from_seconds( 1.0 ) && !sim->fixed_time )
-    ttp = ( resources.current[ RESOURCE_HEALTH ] - ( percent * 0.01 * resources.base[ RESOURCE_HEALTH ] ) ) /
-          ( iteration_dmg_taken / sim->current_time().total_seconds() );
+  {
+    // If not using fixed_time and we have tracked damage intake, use the incoming DPS to predict
+    double ttp = ( resources.current[ RESOURCE_HEALTH ] - ( percent * 0.01 * resources.base[ RESOURCE_HEALTH ] ) ) /
+      ( iteration_dmg_taken / sim->current_time().total_seconds() );
+    time_to_percent = timespan_t::from_seconds( ttp );
+  }
   else
-    ttp = ( sim->expected_iteration_time * ( 1.0 - percent * 0.01 ) - sim->current_time() ).total_seconds();
-
-  time_to_percent = timespan_t::from_seconds( ttp );
+  {
+    // Otherwise, just use the simulation length as a basis for the predictions
+    time_to_percent = sim->expected_iteration_time * ( 1.0 - percent * 0.01 ) - sim->current_time();
+  }
 
   if ( time_to_percent < timespan_t::zero() )
     return timespan_t::zero();
-  else
-    return time_to_percent;
+
+  return time_to_percent;
 }
 
 timespan_t player_t::total_reaction_time()
@@ -6797,14 +6833,14 @@ void player_t::target_mitigation( school_e school, result_amount_type dmg_type, 
 
   if ( school == SCHOOL_PHYSICAL && dmg_type == result_amount_type::DMG_DIRECT )
   {
-    if ( s -> action && !s -> target -> is_enemy() && !s-> target -> is_add() )
-      sim -> print_debug( "Damage to {} before armor mitigation is {}", s -> target -> name(), s -> result_amount );
+    if ( s->action && !s->target->is_enemy() && !s->target->is_add() )
+      sim->print_debug( "Damage to {} before armor mitigation is {}", s->target->name(), s->result_amount );
 
     // Maximum amount of damage reduced by armor
     double armor_cap = 0.85;
 
     // Armor
-    if ( s -> action )
+    if ( s->action && !s->action->ignores_armor )
     {
       double armor  = s -> target_armor;
       double resist = armor / ( armor + s -> target-> base.armor_coeff );
@@ -6812,9 +6848,14 @@ void player_t::target_mitigation( school_e school, result_amount_type dmg_type, 
       s -> result_amount *= 1.0 - resist;
     }
 
-    if ( s -> action && !s -> target -> is_enemy() && !s-> target -> is_add() )
-      sim -> print_debug( "Damage to {} after armor mitigation is {} ({} armor, {} armor coeff)",
-                          s -> target -> name(), s -> result_amount, s -> target_armor, s -> action -> player -> current.armor_coeff );
+    if ( s->action && !s->target->is_enemy() && !s->target->is_add() )
+    {
+      if ( s->action->ignores_armor )
+        sim->print_debug( "Damage to {} after armor mitigation is {} (ignores armor)", s->target->name(), s->result_amount );
+      else
+        sim->print_debug( "Damage to {} after armor mitigation is {} ({} armor, {} armor coeff)",
+                          s->target->name(), s->result_amount, s->target_armor, s->action->player->current.armor_coeff );
+    }
 
     double pre_block_amount = s->result_amount;
 
@@ -6848,6 +6889,9 @@ void player_t::assess_heal( school_e, result_amount_type, action_state_t* s )
   // and other effects based on raw healing.
   if ( buffs.guardian_spirit->up() )
     s->result_total *= 1.0 + buffs.guardian_spirit->data().effectN( 1 ).percent();
+
+  if ( buffs.blessing_of_spring->up() )
+    s->result_total *= 1.0 + buffs.blessing_of_spring->data().effectN( 2 ).percent();
 
   // process heal
   s->result_amount = resource_gain( RESOURCE_HEALTH, s->result_total, nullptr, s->action );
@@ -8713,6 +8757,48 @@ struct pool_resource_t : public action_t
   }
 };
 
+// Auto-Attack Retargeting ==================================================
+
+struct retarget_auto_attack_t : public action_t
+{
+  retarget_auto_attack_t( player_t* player, util::string_view options_str ) :
+    action_t( ACTION_OTHER, "retarget_auto_attack", player )
+  {
+    parse_options( options_str );
+    use_off_gcd = quiet = true;
+    trigger_gcd = timespan_t::zero();
+  }
+
+  void execute() override
+  {
+    if ( player->main_hand_attack && player->main_hand_attack->target != target )
+    {
+      sim->print_debug( "{} MH auto attack changed from target {} to {}.", name(), player->main_hand_attack->target->name(), target->name() );
+      player->main_hand_attack->set_target( target );
+    }
+
+    if ( player->off_hand_attack && player->off_hand_attack->target != target )
+    {
+      sim->print_debug( "{} OH auto attack changed from target {} to {}.", name(), player->off_hand_attack->target->name(), target->name() );
+      player->off_hand_attack->set_target( target );
+    }
+  }
+
+  bool action_ready() override
+  {
+    if ( !action_t::action_ready() )
+      return false;
+
+    if ( player->main_hand_attack && player->main_hand_attack->target != target )
+      return true;
+
+    if ( player->off_hand_attack && player->off_hand_attack->target != target )
+      return true;
+
+    return false;
+  }
+};
+
 }  // UNNAMED NAMESPACE
 
 action_t* player_t::create_action( util::string_view name, const std::string& options_str )
@@ -8782,8 +8868,10 @@ action_t* player_t::create_action( util::string_view name, const std::string& op
     return new variable_t( this, options_str );
   if ( name == "cycling_variable" )
     return new cycling_variable_t( this, options_str );
-  if ( name == "wait_for_cooldown")
+  if ( name == "wait_for_cooldown" )
     return new wait_for_cooldown_t( this, options_str );
+  if ( name == "retarget_auto_attack" )
+    return new retarget_auto_attack_t( this, options_str );
 
   if ( auto action = azerite::create_action( this, name, options_str ) )
     return action;
@@ -11170,20 +11258,35 @@ void player_t::create_options()
   add_option( opt_timespan( "reaction_time_max", reaction_max ) );
   add_option( opt_bool( "stat_cache", cache.active ) );
   add_option( opt_bool( "karazhan_trinkets_paired", karazhan_trinkets_paired ) );
+
+  // Permanent External Buffs
   add_option( opt_bool( "external_buffs.focus_magic", external_buffs.focus_magic ) );
-  add_option( opt_func( "external_buffs.power_infusion", [ this ] ( sim_t*, util::string_view, util::string_view val )
+
+  // Timed External Buffs
+  auto opt_external_buff_times = [ this ] ( util::string_view name, std::vector<timespan_t>& times )
   {
-    external_buffs.power_infusion.clear();
-    auto splits = util::string_split<util::string_view>( val, "/" );
-    for ( auto split : splits )
+    return opt_func( name, [ this, & times ] ( sim_t*, util::string_view, util::string_view val )
     {
-      double t = util::to_double( split );
-      if ( t < 0.0 )
-        throw std::invalid_argument( "The external Power Infusion buff cannot be applied at a negative time" );
-      external_buffs.power_infusion.push_back( timespan_t::from_seconds( t ) );
-    }
-    return true;
-  } ) );
+      times.clear();
+      auto splits = util::string_split<util::string_view>( val, "/" );
+      for ( auto split : splits )
+      {
+        double t = util::to_double( split );
+        if ( t < 0.0 )
+          throw std::invalid_argument( "external buffs cannot be applied at negative times" );
+        times.push_back( timespan_t::from_seconds( t ) );
+      }
+      return true;
+    } );
+  };
+
+  add_option( opt_external_buff_times( "external_buffs.power_infusion", external_buffs.power_infusion ) );
+  add_option( opt_external_buff_times( "external_buffs.benevolent_faerie", external_buffs.benevolent_faerie ) );
+  add_option( opt_external_buff_times( "external_buffs.blessing_of_summer", external_buffs.blessing_of_summer ) );
+  add_option( opt_external_buff_times( "external_buffs.blessing_of_autumn", external_buffs.blessing_of_autumn ) );
+  add_option( opt_external_buff_times( "external_buffs.blessing_of_winter", external_buffs.blessing_of_winter ) );
+  add_option( opt_external_buff_times( "external_buffs.blessing_of_spring", external_buffs.blessing_of_spring ) );
+  add_option( opt_external_buff_times( "external_buffs.conquerors_banner", external_buffs.conquerors_banner ) );
 
   // Azerite options
   if ( ! is_enemy() && ! is_pet() )
@@ -12641,21 +12744,20 @@ bool player_t::verify_use_items() const
 }
 
 /**
- * Reset the main hand (and off hand, if application) swing timer
+ * Reset the main hand (and off hand, if applicable) swing timer
  * Optionally delay by a set amount
  */
-void player_t::reset_auto_attacks( timespan_t delay )
+void player_t::reset_auto_attacks( timespan_t delay, proc_t* proc )
 {
-  if ( sim->debug )
+  if( main_hand_attack || off_hand_attack )
   {
     if ( delay == timespan_t::zero() )
-    {
       sim->print_debug( "Resetting auto attack swing timers" );
-    }
     else
-    {
       sim->print_debug( "Resetting auto attack swing timers with an additional delay of {}", delay );
-    }
+
+    if ( proc )
+      proc->occur();
   }
 
   if ( main_hand_attack && main_hand_attack->execute_event )
@@ -12676,6 +12778,30 @@ void player_t::reset_auto_attacks( timespan_t delay )
     {
       off_hand_attack->execute_event->reschedule( off_hand_attack->execute_event->remains() + delay );
     }
+  }
+}
+
+/**
+ * Delay the main hand (and off hand, if applicable) swing timer
+ */
+void player_t::delay_auto_attacks( timespan_t delay, proc_t* proc )
+{
+  if ( delay == timespan_t::zero() )
+    return;
+
+  if ( proc && ( main_hand_attack || off_hand_attack ) )
+    proc->occur();
+
+  if ( main_hand_attack && main_hand_attack->execute_event )
+  {
+    sim->print_debug( "Delaying MH auto attack swing timer by {} to {}", delay, main_hand_attack->execute_event->remains() + delay );
+    main_hand_attack->execute_event->reschedule( main_hand_attack->execute_event->remains() + delay );
+  }
+
+  if ( off_hand_attack && off_hand_attack->execute_event )
+  {
+    sim->print_debug( "Delaying OH auto attack swing timer by {} to {}", delay, off_hand_attack->execute_event->remains() + delay );
+    off_hand_attack->execute_event->reschedule( off_hand_attack->execute_event->remains() + delay );
   }
 }
 

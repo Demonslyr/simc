@@ -90,7 +90,9 @@ static constexpr auto _hotfix_spell_map = util::make_static_map<unsigned, util::
   { 46, "Required Max Level" },
   { 47, "Spell Type" },
   { 48, "Max Targets" },
-  { 49, "Required Level" }
+  { 49, "Required Level" },
+  { 50, "Travel Delay" },
+  { 51, "Min Travel Time" }
 } );
 
 static constexpr auto _hotfix_spelltext_map = util::make_static_map<unsigned, util::string_view>( {
@@ -204,7 +206,7 @@ static constexpr std::array<proc_map_entry_t, 26> _proc_flag_map { {
   { PF_MELEE_ABILITY,        "Yellow Melee"                },
   { PF_MELEE_ABILITY_TAKEN,  "Yellow Melee Taken"          },
   { PF_RANGED,               "White Ranged"                },
-  { PF_RANGED_TAKEN,         "White Ranged Taken "         },
+  { PF_RANGED_TAKEN,         "White Ranged Taken"          },
   { PF_RANGED_ABILITY,       "Yellow Ranged"               },
   { PF_RANGED_ABILITY_TAKEN, "Yellow Ranged Taken"         },
   { PF_NONE_HEAL,            "Generic Heal"                },
@@ -578,7 +580,7 @@ static constexpr auto _effect_subtype_strings = util::make_static_map<unsigned, 
   { 138, "Modify Melee Haste%"                          },
   { 140, "Modify Ranged Haste%"                         },
   { 142, "Modify Base Resistance"                       },
-  { 143, "Modify Cooldown Recharge Rate"                },
+  { 143, "Modify Cooldown Recharge Rate% (Label)"       },
   { 144, "Reduce Fall Damage"                           },
   { 148, "Modify Cooldown Recharge Rate% (Category)"    },
   { 149, "Modify Casting Pushback"                      },
@@ -716,6 +718,22 @@ static constexpr auto _mechanic_strings = util::make_static_map<unsigned, util::
   { 282, "Taunt"          },
 } );
 
+static constexpr auto _label_strings = util::make_static_map<int, util::string_view>( {
+  { 16, "Class Spells"        },
+  { 17, "Mage Spells"         },
+  { 18, "Priest Spells"       },
+  { 19, "Warlock Spells"      },
+  { 20, "Rogue Spells"        },
+  { 21, "Druid Spells"        },
+  { 22, "Monk Spells"         },
+  { 23, "Hunter Spells"       },
+  { 24, "Shaman Spells"       },
+  { 25, "Warrior Spells"      },
+  { 26, "Paladin Spells"      },
+  { 27, "Death Knight Spells" },
+  { 66, "Demon Hunter Spells" },
+} );
+
 std::string mechanic_str( unsigned mechanic ) {
   auto it = _mechanic_strings.find( mechanic );
   if ( it != _mechanic_strings.end() )
@@ -723,6 +741,19 @@ std::string mechanic_str( unsigned mechanic ) {
     return to_string( it -> second );
   }
   return fmt::format( "Unknown({})", mechanic );
+}
+
+std::string label_str( int label, const dbc_t& dbc ) {
+  auto it = _label_strings.find( label );
+  if ( it != _label_strings.end() )
+  {
+    return fmt::format( "{} ({})", it -> second, label );
+  }
+  auto affected_spells = dbc.spells_by_label( label );
+  return concatenate( affected_spells,
+          []( std::stringstream& s, const spell_data_t* spell ) {
+            fmt::print( s, "{} ({})", spell -> name_cstr(), spell -> id() );
+          } );
 }
 
 std::string spell_flags( const spell_data_t* spell )
@@ -1101,13 +1132,16 @@ std::ostringstream& spell_info::effect_to_str( const dbc_t& dbc,
   if ( e -> type() == E_APPLY_AURA &&
        ( e -> subtype() == A_ADD_PCT_LABEL_MODIFIER || e -> subtype() == A_ADD_FLAT_LABEL_MODIFIER ) )
   {
-    auto affected_spells = dbc.spells_by_label( e -> misc_value2() );
-    s << "                   Affected Spells (Label): ";
-    s << concatenate( affected_spells,
-          []( std::stringstream& s, const spell_data_t* spell ) {
-            fmt::print( s, "{} ({})", spell -> name_cstr(), spell -> id() );
-          } );
-    s << std::endl;
+    auto str = label_str( e -> misc_value2(), dbc );
+    if ( str != "" )
+      s << "                   Affected Spells (Label): " << str << std::endl;
+  }
+
+  if ( e -> type() == E_APPLY_AURA && e -> subtype() == A_MOD_RECHARGE_RATE_LABEL )
+  {
+    auto str = label_str( e -> misc_value1(), dbc );
+    if ( str != "" )
+      s << "                   Affected Spells (Label): " << str << std::endl;
   }
 
   if ( e -> type() == E_APPLY_AURA && range::contains( dbc::effect_category_subtypes(), e -> subtype() ) )
@@ -1386,6 +1420,12 @@ std::string spell_info::to_str( const dbc_t& dbc, const spell_data_t* spell, int
       s << "Velocity         : " << spell -> missile_speed() << " yards/sec"  << std::endl;
   }
 
+  if ( spell -> missile_delay() )
+    s << "Travel Delay     : " << spell -> missile_delay() << " seconds"  << std::endl;
+
+  if ( spell -> missile_min_duration() )
+    s << "Min Travel Time  : " << spell -> missile_min_duration() << " seconds"  << std::endl;
+
   if ( spell -> duration() != timespan_t::zero() )
   {
     s << "Duration         : ";
@@ -1450,42 +1490,45 @@ std::string spell_info::to_str( const dbc_t& dbc, const spell_data_t* spell, int
     s << std::endl;
   }
 
-  if ( spell -> label_count() > 0 )
+  bool first_label = true;
+  for ( size_t i = 1, end = spell -> label_count(); i <= end; ++i )
   {
-    s << "Labels           : ";
-    for ( size_t i = 1, end = spell -> label_count(); i <= end; ++i )
-    {
-      auto label = spell -> labelN( i );
-      auto affecting_effects = dbc.effect_labels_affecting_label( label );
+    auto label = spell -> labelN( i );
+    if ( _label_strings.find( label ) != _label_strings.end() )
+      continue;
 
-      if ( i > 1 )
+    auto affecting_effects = dbc.effect_labels_affecting_label( label );
+
+    if ( !first_label )
+    {
+      if ( affecting_effects.empty() )
       {
-        if ( affecting_effects.empty() )
+        if ( i < end )
         {
-          if ( i < end )
-          {
-            s << ", ";
-          }
-        }
-        else
-        {
-          s << std::endl;
-          s << "                 : ";
+          s << ", ";
         }
       }
-
-      s << label;
-
-      if ( !affecting_effects.empty() )
+      else
       {
-        s << ": " << concatenate( affecting_effects,
-          []( std::stringstream& s, const spelleffect_data_t* e ) {
-            s << e -> spell() -> name_cstr() << " (" << e -> spell() -> id()
-              << " effect#" << ( e -> index() + 1 ) << ")";
-          } );
+        s << "                 : ";
       }
     }
-    s << std::endl;
+    else
+    {
+      first_label = false;
+      s << "Labels           : ";
+    }
+
+    s << label;
+
+    if ( !affecting_effects.empty() )
+    {
+      s << ": " << concatenate( affecting_effects,
+        []( std::stringstream& s, const spelleffect_data_t* e ) {
+          s << e -> spell() -> name_cstr() << " (" << e -> spell() -> id()
+            << " effect#" << ( e -> index() + 1 ) << ")";
+        } ) << std::endl;
+    }
   }
 
   if ( spell -> category_cooldown() > timespan_t::zero() )

@@ -1101,8 +1101,12 @@ struct divine_toll_t : public paladin_spell_t
       {
         if ( rng().roll( p() -> conduit.ringing_clarity.percent() ) )
         {
-          p() -> active.divine_toll -> set_target( this -> target );
-          p() -> active.divine_toll -> schedule_execute();
+          paladin_t* pal = p();
+          player_t* target = this -> target;
+          make_event( *sim, timespan_t::from_millis( 200 * ( hits + 1 ) ), [ target, pal ] {
+              pal -> active.divine_toll -> set_target( target );
+              pal -> active.divine_toll -> schedule_execute();
+            } );
         }
       }
   }
@@ -1226,7 +1230,6 @@ struct ashen_hallow_t : public paladin_spell_t
 {
   ashen_hallow_tick_t* damage_tick;
   ashen_hallow_heal_tick_t* heal_tick;
-  ground_aoe_params_t hallow_params;
   hallowed_discernment_tick_t* hd_damage;
 
   ashen_hallow_t( paladin_t* p, const std::string& options_str ) :
@@ -1251,19 +1254,17 @@ struct ashen_hallow_t : public paladin_spell_t
   void execute() override
   {
     paladin_spell_t::execute();
-    timespan_t tick_time = data().effectN( 2 ).period();
 
-    hallow_params = ground_aoe_params_t()
-      .duration( data().duration() - tick_time - 100_ms )
-      .pulse_time( tick_time )
+    ground_aoe_params_t hallow_params = ground_aoe_params_t()
+      .duration( data().duration() )
+      .pulse_time( data().effectN( 2 ).period() )
       .hasted( ground_aoe_params_t::SPELL_HASTE )
-      .start_time( sim -> current_time() + tick_time )
       .x( execute_state -> target -> x_position )
       .y( execute_state -> target -> y_position );
 
-    make_event<ground_aoe_event_t>( *sim, p(),
-      hallow_params.action( damage_tick )
-        .state_callback( [ this ]( ground_aoe_params_t::state_type type, ground_aoe_event_t* event ) {
+    make_event<ground_aoe_event_t>( *sim, p(), hallow_params.action( damage_tick )
+      .target( execute_state -> target )
+      .state_callback( [ this ]( ground_aoe_params_t::state_type type, ground_aoe_event_t* event ) {
         switch ( type )
         {
         case ground_aoe_params_t::EVENT_CREATED:
@@ -1274,25 +1275,19 @@ struct ashen_hallow_t : public paladin_spell_t
           break;
         default:
           break;
-        } } )
-        .target( execute_state -> target ),
-      true );
+        } } ) );
 
-    make_event<ground_aoe_event_t>( *sim, p() ,
-      hallow_params.action( heal_tick )
-      .target( p() ), true
-    );
+    make_event<ground_aoe_event_t>( *sim, p(), hallow_params.action( heal_tick ).target( p() ) );
   }
 };
 
 
 // Blessing of Seasons
-// For now, this just casts on the player itself. TODO: make this an option
 
-struct blessing_of_summer_proc_t : public paladin_spell_t
+struct blessing_of_summer_proc_t : public spell_t
 {
-  blessing_of_summer_proc_t( paladin_t* p )
-    : paladin_spell_t( "blessing_of_summer_proc", p, p -> find_spell( 328123 ) )
+  blessing_of_summer_proc_t( player_t* p )
+    : spell_t( "blessing_of_summer_proc", p, p -> find_spell( 328123 ) )
   {
     may_dodge = may_parry = may_block = may_crit = callbacks = false;
     background = true;
@@ -1300,15 +1295,18 @@ struct blessing_of_summer_proc_t : public paladin_spell_t
 
   void init() override
   {
-    paladin_spell_t::init();
+    spell_t::init();
     snapshot_flags &= STATE_NO_MULTIPLIER;
   }
 };
 
 struct blessing_of_summer_t : public paladin_spell_t
 {
+  timespan_t buff_duration;
+
   blessing_of_summer_t( paladin_t* p ) :
-    paladin_spell_t( "blessing_of_summer", p, p -> find_spell( 328620 ) )
+    paladin_spell_t( "blessing_of_summer", p, p -> find_spell( 328620 ) ),
+    buff_duration( data().duration() * ( 1.0 + p -> conduit.the_long_summer.percent() ) )
   {
     harmful = false;
 
@@ -1319,7 +1317,7 @@ struct blessing_of_summer_t : public paladin_spell_t
   {
     paladin_spell_t::execute();
 
-    p() -> buffs.blessing_of_summer -> trigger();
+    player -> buffs.blessing_of_summer -> trigger( buff_duration );
   }
 };
 
@@ -1337,7 +1335,7 @@ struct blessing_of_autumn_t : public paladin_spell_t
   {
     paladin_spell_t::execute();
 
-    p() -> buffs.blessing_of_autumn -> trigger();
+    player -> buffs.blessing_of_autumn -> trigger();
   }
 };
 
@@ -1355,38 +1353,39 @@ struct blessing_of_spring_t : public paladin_spell_t
   {
     paladin_spell_t::execute();
 
-    p() -> buffs.blessing_of_spring -> trigger();
+    player -> buffs.blessing_of_spring -> trigger();
   }
 };
 
-struct blessing_of_winter_proc_t : public paladin_spell_t
+template<typename Base, typename Player>
+struct blessing_of_winter_proc_t : public Base
 {
-  blessing_of_winter_proc_t( paladin_t* p ) :
-    paladin_spell_t( "blessing_of_winter_proc", p, p -> find_spell( 328506 ) )
+  private:
+    typedef Base ab; // action base, eg. spell_t
+  public:
+  blessing_of_winter_proc_t( Player* p ) :
+    ab( "blessing_of_winter_proc", p, p -> find_spell( 328506 ) )
   {
-    may_dodge = may_parry = may_block = may_crit = callbacks = false;
-    background = true;
-  }
-
-  void init() override
-  {
-    paladin_spell_t::init();
-
-    snapshot_flags |= STATE_AP | STATE_SP | STATE_MUL_DA | STATE_VERSATILITY | STATE_TGT_MITG_DA | STATE_CRIT | STATE_TGT_CRIT | STATE_MUL_PERSISTENT;
-    update_flags |= STATE_AP | STATE_SP | STATE_MUL_DA | STATE_VERSATILITY | STATE_TGT_MITG_DA | STATE_CRIT | STATE_TGT_CRIT;
+    ab::callbacks = false;
+    ab::background = true;
+    ab::spell_power_mod.direct = ab::attack_power_mod.direct = ab::data().effectN( 2 ).percent();
   }
 
   // Uses max(AP, SP)
   double attack_direct_power_coefficient( const action_state_t* s ) const override
   {
-    if ( s -> attack_power < s -> spell_power ) return 0;
-    return data().effectN( 2 ).percent();
+    if ( s -> attack_power < s -> spell_power )
+      return 0;
+
+    return ab::attack_direct_power_coefficient( s );
   }
 
   double spell_direct_power_coefficient( const action_state_t* s ) const override
   {
-    if ( s -> spell_power <= s -> attack_power ) return 0;
-    return data().effectN( 2 ).percent();
+    if ( s -> spell_power <= s -> attack_power )
+      return 0;
+
+    return ab::spell_direct_power_coefficient( s );
   }
 };
 
@@ -1404,7 +1403,7 @@ struct blessing_of_winter_t : public paladin_spell_t
   {
     paladin_spell_t::execute();
 
-    p() -> buffs.blessing_of_winter -> trigger();
+    player -> buffs.blessing_of_winter -> trigger();
   }
 };
 
@@ -1590,6 +1589,53 @@ struct blessing_of_sacrifice_t : public buff_t
   }
 };
 
+struct blessing_of_autumn_t : public buff_t
+{
+  bool affected_actions_initialized;
+  std::vector<action_t*> affected_actions;
+
+  blessing_of_autumn_t( player_t* p ) :
+    buff_t( p, "blessing_of_autumn", p -> find_spell( 328622 ) ),
+    affected_actions_initialized( false )
+  {
+    set_cooldown( 0_ms );
+    set_default_value_from_effect( 1 );
+
+    set_stack_change_callback( [ this ] ( buff_t* b, int, int new_ ) {
+      if ( !affected_actions_initialized )
+      {
+        int label = data().effectN( 1 ).misc_value1();
+        affected_actions.clear();
+        for ( auto a : player -> action_list )
+        {
+          if ( a -> data().affected_by_label( label ) )
+          {
+            if ( range::find( affected_actions, a ) == affected_actions.end() )
+            {
+              affected_actions.push_back( a );
+            }
+          }
+        }
+
+        affected_actions_initialized = true;
+      }
+
+      double recharge_rate_multiplier = 1.0 / ( 1 + b -> default_value );
+      for ( auto a : affected_actions )
+      {
+        if ( new_ == 1 )
+          a -> base_recharge_rate_multiplier *= recharge_rate_multiplier;
+        else
+          a -> base_recharge_rate_multiplier /= recharge_rate_multiplier;
+        if ( a -> cooldown -> action == a )
+          a -> cooldown -> adjust_recharge_multiplier();
+        if ( a -> internal_cooldown -> action == a )
+          a -> internal_cooldown -> adjust_recharge_multiplier();
+      }
+    } );
+  }
+};
+
 } // end namespace buffs
 // ==========================================================================
 // End Paladin Buffs, Part Deux
@@ -1673,7 +1719,6 @@ void paladin_t::create_actions()
     active.seasons[ AUTUMN ] = new blessing_of_autumn_t( this );
     active.seasons[ WINTER ] = new blessing_of_winter_t( this );
     active.seasons[ SPRING ] = new blessing_of_spring_t( this );
-    active.blessing_of_summer_proc = new blessing_of_summer_proc_t( this );
   }
 
   if ( conduit.virtuous_command -> ok() )
@@ -1989,63 +2034,12 @@ void paladin_t::create_buffs()
   buffs.the_magistrates_judgment = make_buff( this, "the_magistrates_judgment", find_spell( 337682 ) )
         -> set_default_value( find_spell( 337682 ) -> effectN( 1 ).base_value() );
   buffs.final_verdict = make_buff( this, "final_verdict", find_spell( 337228 ) );
-  buffs.virtuous_command = make_buff( this, "virtuous_command", find_spell( 339664 ) );
+  buffs.virtuous_command = make_buff( this, "virtuous_command", find_spell( 339664 ) )
+        -> set_refresh_behavior( buff_refresh_behavior::DISABLED ); // doesn't refresh on reapplication
 
   // Covenants
   buffs.vanquishers_hammer = make_buff( this, "vanquishers_hammer", covenant.necrolord )
         -> set_cooldown( 0_ms );
-
-  buffs.blessing_of_summer = make_buff( this, "blessing_of_summer", find_spell( 328620 ) )
-        -> set_chance( 1 )
-        -> apply_affecting_conduit( conduit.the_long_summer );
-  buffs.blessing_of_autumn = make_buff( this, "blessing_of_autumn", find_spell( 328622 ) )
-        -> set_default_value_from_effect( 1 )
-        -> set_stack_change_callback( [this]( buff_t* b, int, int new_ ) {
-                double recharge_multiplier = 1.0 / ( 1 + b->default_value );
-                for ( auto a : this->action_list )
-                {
-                  // Only class spells have their cooldown reduced.
-                  bool is_adjustable_class_spell = a->data().class_mask() != 0 && !a->background && a->cooldown_duration() > 0_ms && a->data().race_mask() == 0;
-                  if ( is_adjustable_class_spell )
-                  {
-                    if ( new_ == 1 )
-                      a->base_recharge_multiplier *= recharge_multiplier;
-                    else
-                      a->base_recharge_multiplier /= recharge_multiplier;
-
-                    if ( a->cooldown->action == a )
-                      a->cooldown->adjust_recharge_multiplier();
-                    if ( a->internal_cooldown->action == a )
-                      a->internal_cooldown->adjust_recharge_multiplier();
-                  }
-                }
-             } );
-
-  auto bow_effect = new special_effect_t( this );
-  bow_effect -> spell_id = 328281;
-  bow_effect -> name_str = "blessing_of_winter";
-  bow_effect -> cooldown_ = timespan_t::from_seconds( 0.5 );
-  bow_effect -> execute_action = new blessing_of_winter_proc_t( this );
-  special_effects.push_back( bow_effect );
-  dbc_proc_callback_t* bow_callback = new dbc_proc_callback_t( this, *bow_effect );
-  bow_callback -> initialize();
-  bow_callback -> deactivate();
-
-  buffs.blessing_of_winter = make_buff( this, "blessing_of_winter", find_spell( 328281 ) )
-    -> set_activated( false )
-    -> set_cooldown( timespan_t::zero() ) // cooldown handled by action
-    -> set_chance( 1 )
-    -> set_stack_change_callback( [ bow_callback ]( buff_t*, int old, int new_ )
-        {
-          if ( old == 0 ) {
-            assert( ! bow_callback -> active );
-            bow_callback -> activate();
-          } else if ( new_ == 0 ) {
-            bow_callback -> deactivate();
-          }
-        } );
-  buffs.blessing_of_spring = make_buff( this, "blessing_of_spring", find_spell( 328282 ) )
-    -> add_invalidate( CACHE_PLAYER_HEAL_MULTIPLIER );
 }
 
 // paladin_t::default_potion ================================================
@@ -2291,7 +2285,7 @@ void paladin_t::init_spells()
   covenant.kyrian = find_covenant_spell( "Divine Toll" );
   covenant.venthyr = find_covenant_spell( "Ashen Hallow" );
   covenant.necrolord = find_covenant_spell( "Vanquisher's Hammer" );
-  covenant.night_fae = find_covenant_spell( "Blessing of Summer" ); // TODO: fix
+  covenant.night_fae = find_covenant_spell( "Blessing of Summer" );
 
   spells.ashen_hallow_how = find_spell( 330382 );
 
@@ -2302,7 +2296,7 @@ void paladin_t::init_spells()
   conduit.focused_light = find_conduit_spell( "Focused Light" );
   conduit.expurgation = find_conduit_spell( "Expurgation" );
   conduit.templars_vindication = find_conduit_spell( "Templar's Vindication" );
-  conduit.the_long_summer = find_conduit_spell( "The Long Summer" ); // TODO: implement
+  conduit.the_long_summer = find_conduit_spell( "The Long Summer" );
   conduit.truths_wake = find_conduit_spell( "Truth's Wake" );
   conduit.virtuous_command = find_conduit_spell( "Virtuous Command" );
   conduit.righteous_might = find_conduit_spell( "Righteous Might" );
@@ -2417,18 +2411,6 @@ double paladin_t::composite_player_multiplier( school_e school ) const
   return m;
 }
 
-// paladin_t::composite_player_heal_multiplier ==============================
-
-double paladin_t::composite_player_heal_multiplier( const action_state_t* s ) const
-{
-  double m = player_t::composite_player_heal_multiplier( s );
-
-  if ( buffs.blessing_of_spring -> up() )
-    m *= 1.0 + buffs.blessing_of_spring -> data().effectN( 1 ).percent();
-
-  return m;
-}
-
 // paladin_t::composite_attribute_multiplier ================================
 
 double paladin_t::composite_attribute_multiplier( attribute_e attr ) const
@@ -2488,7 +2470,7 @@ double paladin_t::composite_mastery() const
   double m = player_t::composite_mastery();
 
   if( buffs.seraphim -> up() )
-    m += buffs.seraphim -> data().effectN( 4 ).percent();
+    m += buffs.seraphim -> data().effectN( 4 ).base_value();
 
   return m;
 }
@@ -2932,15 +2914,6 @@ void paladin_t::assess_damage( school_e school,
   player_t::assess_damage( school, dtype, s );
 }
 
-void paladin_t::assess_heal( school_e school, result_amount_type typ, action_state_t* s )
-{
-  // see comment in player_t::assess_heal for why we modify result_total here
-  if ( buffs.blessing_of_spring -> up() )
-    s -> result_total *= 1.0 + buffs.blessing_of_spring -> data().effectN( 2 ).percent();
-
-  player_t::assess_heal( school, typ, s );
-}
-
 // paladin_t::create_options ================================================
 
 void paladin_t::create_options()
@@ -3292,6 +3265,87 @@ struct paladin_module_t : public module_t
     p -> buffs.beacon_of_light          = make_buff( p, "beacon_of_light", p -> find_spell( 53563 ) );
     p -> buffs.blessing_of_sacrifice    = new buffs::blessing_of_sacrifice_t( p );
     p -> debuffs.forbearance            = new buffs::forbearance_t( p, "forbearance" );
+
+    // 9.0 Paladin Night Fae buffs
+    p -> buffs.blessing_of_summer = make_buff( p, "blessing_of_summer", p -> find_spell( 328620 ) )
+                                      -> set_chance( 1.0 )
+                                      -> set_cooldown( 0_ms );
+    p -> buffs.blessing_of_autumn = make_buff<buffs::blessing_of_autumn_t>( p );
+    p -> buffs.blessing_of_winter = make_buff( p, "blessing_of_winter", p -> find_spell( 328281 ) )
+                                      -> set_cooldown( 0_ms );
+    p -> buffs.blessing_of_spring = make_buff( p, "blessing_of_spring", p -> find_spell( 328282 ) )
+                                      -> set_cooldown( 0_ms )
+                                      -> add_invalidate( CACHE_PLAYER_HEAL_MULTIPLIER );
+  }
+
+  void create_actions( player_t* p ) const override
+  {
+    if ( p -> is_enemy() || p -> type == HEALING_ENEMY || p -> is_pet() )
+      return;
+
+    // 9.0 Paladin Night Fae
+
+    // Only create these if the player is a Night Fae Paladin or sets the option to get the buff.
+    // If the Paladin action is ever updated to allow manually casting it on other players, this
+    // will need to be adjusted to also work if there is a Night Fae Paladin in the raid.
+    if ( p -> type == PALADIN && p -> covenant && p -> covenant -> type() == covenant_e::NIGHT_FAE || ! p -> external_buffs.blessing_of_summer.empty() )
+    {
+      action_t* summer_proc = new blessing_of_summer_proc_t( p );
+      const spell_data_t* summer_data = p -> find_spell( 328620 );
+
+      // This effect can proc on almost any damage, including many actions in simc that have callbacks = false.
+      // Using an assessor here will cause this to have the chance to proc on damage from any action.
+      // TODO: Ensure there is no incorrect looping that can happen with other similar effects.
+      p -> assessor_out_damage.add( assessor::CALLBACKS, [ p, summer_proc, summer_data ]( result_amount_type, action_state_t* s )
+                                {
+                                  if ( s -> action != summer_proc
+                                    && s -> result_total > 0.0
+                                    && p -> buffs.blessing_of_summer -> up()
+                                    && summer_data -> proc_flags() & ( 1 << s -> proc_type() )
+                                    && p -> rng().roll( summer_data -> proc_chance() ) )
+                                  {
+                                    double da = s -> result_amount * summer_data -> effectN( 1 ).percent();
+                                    make_event( p -> sim, [ t = s -> target, summer_proc, da ]
+                                    {
+                                      summer_proc -> set_target( t );
+                                      summer_proc -> base_dd_min = summer_proc -> base_dd_max = da;
+                                      summer_proc -> execute();
+                                    } );
+                                  }
+
+                                  return assessor::CONTINUE;
+                                } );
+    }
+
+    if ( p -> type == PALADIN && p -> covenant && p -> covenant -> type() == covenant_e::NIGHT_FAE || ! p -> external_buffs.blessing_of_winter.empty() )
+    {
+      action_t* winter_proc;
+      if ( p -> type == PALADIN )
+        // Some Paladin auras affect this spell and are handled in paladin_spell_t.
+        winter_proc = new blessing_of_winter_proc_t<paladin_spell_t, paladin_t>( debug_cast<paladin_t*>( p ) );
+      else
+        winter_proc = new blessing_of_winter_proc_t<spell_t, player_t>( p );
+
+      auto winter_effect              = new special_effect_t( p );
+      winter_effect -> name_str       = "blessing_of_winter_cb";
+      winter_effect -> type           = SPECIAL_EFFECT_EQUIP;
+      winter_effect -> spell_id       = 328281;
+      winter_effect -> cooldown_      = p -> find_spell( 328281 ) -> internal_cooldown();
+      winter_effect -> execute_action = winter_proc;
+      p -> special_effects.push_back( winter_effect );
+
+      auto winter_cb = new dbc_proc_callback_t( p, *winter_effect );
+      winter_cb -> deactivate();
+      winter_cb -> initialize();
+
+      p -> buffs.blessing_of_winter -> set_stack_change_callback( [ winter_cb ] ( buff_t* b, int, int new_ )
+                                         {
+                                           if ( new_ )
+                                             winter_cb -> activate();
+                                           else
+                                             winter_cb -> deactivate();
+                                         } );
+    }
   }
 
   void register_hotfixes() const override

@@ -93,6 +93,7 @@ void blood( player_t* p )
   precombat->add_action( "snapshot_stats", "Snapshot raid buffed stats before combat begins and pre-potting is done." );
 
   default_->add_action( "auto_attack" );
+  default_->add_action( "mind_freeze,if=target.debuff.casting.react", "Interrupt" );
   default_->add_action( "blood_fury,if=cooldown.dancing_rune_weapon.ready&(!cooldown.blooddrinker.ready|!talent.blooddrinker.enabled)" );
   default_->add_action( "berserking" );
   default_->add_action( "arcane_pulse,if=active_enemies>=2|rune<1&runic_power.deficit>60" );
@@ -157,17 +158,27 @@ void frost( player_t* p )
   action_priority_list_t* obliteration = p->get_action_priority_list         ( "obliteration" );
   action_priority_list_t* obliteration_pooling = p->get_action_priority_list ( "obliteration_pooling" );
   action_priority_list_t* standard = p->get_action_priority_list             ( "standard" );
+  action_priority_list_t* racials = p->get_action_priority_list              ( "racials" );
+  action_priority_list_t* trinkets = p->get_action_priority_list             ( "trinkets" );
 
   precombat->add_action( "flask" );
   precombat->add_action( "food" );
   precombat->add_action( "augmentation" );
   precombat->add_action( "snapshot_stats", "Snapshot raid buffed stats before combat begins and pre-potting is done." );
+  precombat->add_action( "variable,name=trinket_1_sync,op=setif,value=1,value_else=0.5,condition=trinket.1.has_use_buff&(!talent.breath_of_sindragosa&(trinket.1.cooldown.duration%%cooldown.pillar_of_frost.duration=0)|talent.breath_of_sindragosa&(cooldown.breath_of_sindragosa.duration%%trinket.1.cooldown.duration=0)|talent.icecap)", "Evaluates a trinkets cooldown, divided by pillar of frost or breath of sindragosa's cooldown. If it's value has no remainder return 1, else return 0.5." );
+  precombat->add_action( "variable,name=trinket_2_sync,op=setif,value=1,value_else=0.5,condition=trinket.2.has_use_buff&(!talent.breath_of_sindragosa&(trinket.2.cooldown.duration%%cooldown.pillar_of_frost.duration=0)|talent.breath_of_sindragosa&(cooldown.breath_of_sindragosa.duration%%trinket.2.cooldown.duration=0)|talent.icecap)" );
+  precombat->add_action( "variable,name=trinket_priority,op=setif,value=2,value_else=1,condition=!trinket.1.has_use_buff&trinket.2.has_use_buff|trinket.2.has_use_buff&((trinket.2.cooldown.duration%trinket.2.proc.any_dps.duration)*(1.5+trinket.2.has_buff.strength)*(variable.trinket_2_sync))>((trinket.1.cooldown.duration%trinket.1.proc.any_dps.duration)*(1.5+trinket.1.has_buff.strength)*(variable.trinket_1_sync))", "Estimates a trinkets value by comparing the cooldown of the trinket, divided by the duration of the buff it provides. Has a strength modifier to give a higher priority to strength trinkets, as well as a modifier for if a trinket will or will not sync with cooldowns." );
 
   default_->add_action( "auto_attack" );
-  default_->add_action( "howling_blast,if=!dot.frost_fever.ticking&(talent.icecap|cooldown.breath_of_sindragosa.remains>15|talent.obliteration&cooldown.pillar_of_frost.remains&!buff.killing_machine.up)", "Apply Frost Fever and maintain Icy Talons" );
+  default_->add_action( "variable,name=specified_trinket,value=(equipped.inscrutable_quantum_device&cooldown.inscrutable_quantum_device.ready)", "Prevent specified trinkets being used with automatic lines" );
+  default_->add_action( "remorseless_winter,if=conduit.everfrost&talent.gathering_storm&!talent.obliteration&cooldown.pillar_of_frost.remains", "Apply Frost Fever, maintain Icy Talons and keep Remorseless Winter rolling" );
+  default_->add_action( "howling_blast,if=!dot.frost_fever.ticking&(talent.icecap|cooldown.breath_of_sindragosa.remains>15|talent.obliteration&cooldown.pillar_of_frost.remains&!buff.killing_machine.up)" );
   default_->add_action( "glacial_advance,if=buff.icy_talons.remains<=gcd&buff.icy_talons.up&spell_targets.glacial_advance>=2&(!talent.breath_of_sindragosa|cooldown.breath_of_sindragosa.remains>15)" );
   default_->add_action( "frost_strike,if=buff.icy_talons.remains<=gcd&buff.icy_talons.up&(!talent.breath_of_sindragosa|cooldown.breath_of_sindragosa.remains>15)" );
+  default_->add_action( "mind_freeze,if=target.debuff.casting.react", "Interrupt" );
   default_->add_action( "call_action_list,name=covenants", "Choose Action list to run" );
+  default_->add_action( "call_action_list,name=racials" );
+  default_->add_action( "call_action_list,name=trinkets" );
   default_->add_action( "call_action_list,name=cooldowns" );
   default_->add_action( "call_action_list,name=cold_heart,if=talent.cold_heart&(buff.cold_heart.stack>=10&(debuff.razorice.stack=5|!death_knight.runeforge.razorice)|fight_remains<=gcd)" );
   default_->add_action( "run_action_list,name=bos_ticking,if=buff.breath_of_sindragosa.up" );
@@ -181,7 +192,7 @@ void frost( player_t* p )
   aoe->add_action( "glacial_advance,if=talent.frostscythe" );
   aoe->add_action( "frost_strike,target_if=max:(debuff.razorice.stack+1)%(debuff.razorice.remains+1)*death_knight.runeforge.razorice,if=cooldown.remorseless_winter.remains<=2*gcd&talent.gathering_storm" );
   aoe->add_action( "howling_blast,if=buff.rime.up" );
-  aoe->add_action( "obliterate,if=death_and_decay.ticking&covenant.night_fae&buff.deaths_due.stack>8" );
+  aoe->add_action( "obliterate,if=death_and_decay.ticking&covenant.night_fae&buff.deaths_due.stack<8" );
   aoe->add_action( "frostscythe,if=buff.killing_machine.react&(!death_and_decay.ticking&covenant.night_fae|!covenant.night_fae)" );
   aoe->add_action( "glacial_advance,if=runic_power.deficit<(15+talent.runic_attenuation*3)" );
   aoe->add_action( "frost_strike,target_if=max:(debuff.razorice.stack+1)%(debuff.razorice.remains+1)*death_knight.runeforge.razorice,if=runic_power.deficit<(15+talent.runic_attenuation*3)" );
@@ -202,14 +213,14 @@ void frost( player_t* p )
   bos_pooling->add_action( "glacial_advance,if=cooldown.pillar_of_frost.remains>rune.time_to_4&runic_power.deficit<40&spell_targets.glacial_advance>=2" );
   bos_pooling->add_action( "frost_strike,target_if=max:(debuff.razorice.stack+1)%(debuff.razorice.remains+1)*death_knight.runeforge.razorice,if=cooldown.pillar_of_frost.remains>rune.time_to_4&runic_power.deficit<40" );
 
-  bos_ticking->add_action( "obliterate,target_if=max:(debuff.razorice.stack+1)%(debuff.razorice.remains+1)*death_knight.runeforge.razorice,if=runic_power.deficit>=60", "Breath of Sindragosa Active Rotation" );
-  bos_ticking->add_action( "remorseless_winter,if=talent.gathering_storm|conduit.everfrost|runeforge.biting_cold|active_enemies>=2" );
-  bos_ticking->add_action( "howling_blast,if=buff.rime.up&(runic_power.deficit<55|rune.time_to_3<=gcd|spell_targets.howling_blast>=2)" );
-  bos_ticking->add_action( "obliterate,target_if=max:(debuff.razorice.stack+1)%(debuff.razorice.remains+1)*death_knight.runeforge.razorice,if=rune.time_to_4<gcd|runic_power.deficit>=45" );
+  bos_ticking->add_action( "obliterate,target_if=max:(debuff.razorice.stack+1)%(debuff.razorice.remains+1)*death_knight.runeforge.razorice,if=runic_power.deficit>=(45+talent.runic_attenuation*3)", "Breath of Sindragosa Active Rotation" );
+  bos_ticking->add_action( "remorseless_winter,if=talent.gathering_storm|conduit.everfrost|runeforge.biting_cold|active_enemies>=2|!talent.gathering_storm&!conduit.everfrost&!runeforge.biting_cold&runic_power<32" );
+  bos_ticking->add_action( "death_and_decay,if=runic_power<32" );
+  bos_ticking->add_action( "howling_blast,if=buff.rime.up&(runic_power.deficit<55|rune.time_to_3<=gcd|spell_targets.howling_blast>=2)|runic_power<32" );
   bos_ticking->add_action( "frostscythe,if=buff.killing_machine.up&spell_targets.frostscythe>=2&(!death_and_decay.ticking&covenant.night_fae|!covenant.night_fae)" );
   bos_ticking->add_action( "horn_of_winter,if=runic_power.deficit>=40&rune.time_to_3>gcd" );
   bos_ticking->add_action( "frostscythe,if=spell_targets.frostscythe>=2&(buff.deaths_due.stack=8|!death_and_decay.ticking|!covenant.night_fae)" );
-  bos_ticking->add_action( "obliterate,target_if=max:(debuff.razorice.stack+1)%(debuff.razorice.remains+1)*death_knight.runeforge.razorice,if=runic_power.deficit>25&rune>3" );
+  bos_ticking->add_action( "obliterate,target_if=max:(debuff.razorice.stack+1)%(debuff.razorice.remains+1)*death_knight.runeforge.razorice,if=runic_power.deficit>25|rune.time_to_3<gcd" );
   bos_ticking->add_action( "howling_blast,if=buff.rime.up" );
   bos_ticking->add_action( "arcane_torrent,if=runic_power.deficit>50" );
 
@@ -219,19 +230,11 @@ void frost( player_t* p )
   cold_heart->add_action( "chains_of_ice,if=!talent.obliteration&!death_knight.runeforge.fallen_crusader&buff.cold_heart.stack>=10&!buff.pillar_of_frost.up&cooldown.pillar_of_frost.remains>20" );
   cold_heart->add_action( "chains_of_ice,if=talent.obliteration&!buff.pillar_of_frost.up&(buff.cold_heart.stack>=16&buff.unholy_strength.up|buff.cold_heart.stack>=19|cooldown.pillar_of_frost.remains<3&buff.cold_heart.stack>=14)", "Prevent Cold Heart overcapping during pillar" );
 
-  cooldowns->add_action( "use_items,if=cooldown.pillar_of_frost.ready|cooldown.pillar_of_frost.remains>20", "On Use Items, Potion and Racials" );
-  cooldowns->add_action( "potion,if=buff.pillar_of_frost.up&buff.empower_rune_weapon.up" );
-  cooldowns->add_action( "blood_fury,if=buff.pillar_of_frost.up&buff.empower_rune_weapon.up" );
-  cooldowns->add_action( "berserking,if=buff.pillar_of_frost.up" );
-  cooldowns->add_action( "arcane_pulse,if=(!buff.pillar_of_frost.up&active_enemies>=2)|!buff.pillar_of_frost.up&(rune.deficit>=5&runic_power.deficit>=60)" );
-  cooldowns->add_action( "lights_judgment,if=buff.pillar_of_frost.up" );
-  cooldowns->add_action( "ancestral_call,if=buff.pillar_of_frost.up&buff.empower_rune_weapon.up" );
-  cooldowns->add_action( "fireblood,if=buff.pillar_of_frost.remains<=8&buff.empower_rune_weapon.up" );
-  cooldowns->add_action( "bag_of_tricks,if=buff.pillar_of_frost.up&active_enemies=1&(buff.pillar_of_frost.remains<5&talent.cold_heart.enabled|!talent.cold_heart.enabled&buff.pillar_of_frost.remains<3)" );
+  cooldowns->add_action( "potion,if=buff.pillar_of_frost.up", "Potion" );
   cooldowns->add_action( "empower_rune_weapon,if=talent.obliteration&(cooldown.pillar_of_frost.ready&rune.time_to_5>gcd&runic_power.deficit>=10|buff.pillar_of_frost.up&rune.time_to_5>gcd)|fight_remains<20", "Cooldowns" );
-  cooldowns->add_action( "empower_rune_weapon,if=talent.breath_of_sindragosa&runic_power.deficit>40&rune.time_to_5>gcd&(buff.breath_of_sindragosa.up|fight_remains<20)" );
+  cooldowns->add_action( "empower_rune_weapon,if=talent.breath_of_sindragosa&runic_power.deficit>30&rune.time_to_5>gcd&(buff.breath_of_sindragosa.up|fight_remains<20)" );
   cooldowns->add_action( "empower_rune_weapon,if=talent.icecap&rune<3" );
-  cooldowns->add_action( "pillar_of_frost,if=talent.breath_of_sindragosa&(cooldown.breath_of_sindragosa.remains|cooldown.breath_of_sindragosa.ready&runic_power.deficit<60)" );
+  cooldowns->add_action( "pillar_of_frost,if=talent.breath_of_sindragosa&(cooldown.breath_of_sindragosa.remains|cooldown.breath_of_sindragosa.ready&runic_power.deficit<50)" );
   cooldowns->add_action( "pillar_of_frost,if=talent.icecap&!buff.pillar_of_frost.up" );
   cooldowns->add_action( "pillar_of_frost,if=talent.obliteration&(talent.gathering_storm.enabled&buff.remorseless_winter.up|!talent.gathering_storm.enabled)" );
   cooldowns->add_action( "breath_of_sindragosa,if=buff.pillar_of_frost.up" );
@@ -247,7 +250,7 @@ void frost( player_t* p )
   covenants->add_action( "swarming_mist,if=active_enemies=1&runic_power.deficit>3&cooldown.pillar_of_frost.remains<3&!talent.breath_of_sindragosa&(!raid_event.adds.exists|raid_event.adds.in>15)" );
   covenants->add_action( "swarming_mist,if=active_enemies>=2&!talent.breath_of_sindragosa" );
   covenants->add_action( "swarming_mist,if=talent.breath_of_sindragosa&(buff.breath_of_sindragosa.up&(active_enemies=1&runic_power.deficit>40|active_enemies>=2&runic_power.deficit>60)|!buff.breath_of_sindragosa.up&cooldown.breath_of_sindragosa.remains)" );
-  covenants->add_action( "abomination_limb,if=active_enemies=1&cooldown.pillar_of_frost.remains<3&(!raid_event.adds.exists|raid_event.adds.in>15)" );
+  covenants->add_action( "abomination_limb,if=active_enemies=1&cooldown.pillar_of_frost.remains<3&(!raid_event.adds.exists|raid_event.adds.in>15)&(talent.breath_of_sindragosa&runic_power.deficit<60&cooldown.breath_of_sindragosa.remains<2|!talent.breath_of_sindragosa)" );
   covenants->add_action( "abomination_limb,if=active_enemies>=2" );
   covenants->add_action( "shackle_the_unworthy,if=active_enemies=1&cooldown.pillar_of_frost.remains<3&(!raid_event.adds.exists|raid_event.adds.in>15)" );
   covenants->add_action( "shackle_the_unworthy,if=active_enemies>=2" );
@@ -283,6 +286,20 @@ void frost( player_t* p )
   standard->add_action( "frost_strike" );
   standard->add_action( "horn_of_winter" );
   standard->add_action( "arcane_torrent" );
+
+  racials->add_action( "blood_fury,if=buff.pillar_of_frost.up", "Racial Abilities" );
+  racials->add_action( "berserking,if=buff.pillar_of_frost.up" );
+  racials->add_action( "arcane_pulse,if=(!buff.pillar_of_frost.up&active_enemies>=2)|!buff.pillar_of_frost.up&(rune.deficit>=5&runic_power.deficit>=60)" );
+  racials->add_action( "lights_judgment,if=buff.pillar_of_frost.up" );
+  racials->add_action( "ancestral_call,if=buff.pillar_of_frost.up&buff.empower_rune_weapon.up" );
+  racials->add_action( "fireblood,if=buff.pillar_of_frost.remains<=8&buff.empower_rune_weapon.up" );
+  racials->add_action( "bag_of_tricks,if=buff.pillar_of_frost.up&active_enemies=1&(buff.pillar_of_frost.remains<5&talent.cold_heart.enabled|!talent.cold_heart.enabled&buff.pillar_of_frost.remains<3)" );
+
+  trinkets->add_action( "use_item,name=inscrutable_quantum_device,if=buff.pillar_of_frost.up|target.time_to_pct_20<5|fight_remains<21", "Trinkets" );
+  trinkets->add_action( "use_item,slot=trinket1,if=!variable.specified_trinket&buff.pillar_of_frost.up&(!talent.icecap|talent.icecap&buff.pillar_of_frost.remains>=10)&(!trinket.2.has_cooldown|trinket.2.cooldown.remains|variable.trinket_priority=1)|trinket.1.proc.any_dps.duration>=fight_remains", "The trinket with the highest estimated value, will be used first and paired with Pillar of Frost." );
+  trinkets->add_action( "use_item,slot=trinket2,if=!variable.specified_trinket&buff.pillar_of_frost.up&(!talent.icecap|talent.icecap&buff.pillar_of_frost.remains>=10)&(!trinket.1.has_cooldown|trinket.1.cooldown.remains|variable.trinket_priority=2)|trinket.2.proc.any_dps.duration>=fight_remains" );
+  trinkets->add_action( "use_item,slot=trinket1,if=!trinket.1.has_use_buff&(trinket.2.cooldown.remains|!trinket.2.has_use_buff)|cooldown.pillar_of_frost.remains>20", "If only one on use trinket provides a buff, use the other on cooldown. Or if neither trinket provides a buff, use both on cooldown." );
+  trinkets->add_action( "use_item,slot=trinket2,if=!trinket.2.has_use_buff&(trinket.1.cooldown.remains|!trinket.1.has_use_buff)|cooldown.pillar_of_frost.remains>20" );
 }
 //frost_apl_end
 
@@ -298,32 +315,31 @@ void unholy( player_t* p )
   action_priority_list_t* generic = p->get_action_priority_list     ( "generic" );
   action_priority_list_t* generic_aoe = p->get_action_priority_list ( "generic_aoe" );
   action_priority_list_t* trinkets = p->get_action_priority_list    ( "trinkets" );
+  action_priority_list_t* racials = p->get_action_priority_list     ( "racials" );
 
   precombat->add_action( "flask" );
   precombat->add_action( "food" );
   precombat->add_action( "augmentation" );
   precombat->add_action( "snapshot_stats", "Snapshot raid buffed stats before combat begins and pre-potting is done." );
   precombat->add_action( "raise_dead" );
+  precombat->add_action( "variable,name=trinket_1_sync,op=setif,value=1,value_else=0.5,condition=trinket.1.has_use_buff&(trinket.1.cooldown.duration%%45=0)", "Evaluates a trinkets cooldown, divided by 45. This was chosen as unholy works on 45 second burst cycles, but has too many cdr effects to give a cooldown.x.duration divisor instead. If it's value has no remainder return 1, else return 0.5." );
+  precombat->add_action( "variable,name=trinket_2_sync,op=setif,value=1,value_else=0.5,condition=trinket.2.has_use_buff&(trinket.2.cooldown.duration%%45=0)" );
+  precombat->add_action( "variable,name=trinket_priority,op=setif,value=2,value_else=1,condition=!trinket.1.has_use_buff&trinket.2.has_use_buff|trinket.2.has_use_buff&((trinket.2.cooldown.duration%trinket.2.proc.any_dps.duration)*(1.5+trinket.2.has_buff.strength)*(variable.trinket_2_sync))>((trinket.1.cooldown.duration%trinket.1.proc.any_dps.duration)*(1.5+trinket.1.has_buff.strength)*(variable.trinket_1_sync))", "Estimates a trinkets value by comparing the cooldown of the trinket, divided by the duration of the buff it provides. Has a strength modifier to give a higher priority to strength trinkets, as well as a modifier for if a trinket will or will not sync with cooldowns." );
 
   default_->add_action( "auto_attack" );
+  default_->add_action( "mind_freeze,if=target.debuff.casting.react", "Interrupt" );
+  default_->add_action( "variable,name=specified_trinket,value=(equipped.inscrutable_quantum_device&cooldown.inscrutable_quantum_device.ready)", "Prevent specified trinkets being used with automatic lines" );
   default_->add_action( "variable,name=pooling_runic_power,value=cooldown.summon_gargoyle.remains<5&talent.summon_gargoyle", "Variables" );
   default_->add_action( "variable,name=pooling_runes,value=talent.soul_reaper&rune<2&target.time_to_pct_35<5&fight_remains>5" );
   default_->add_action( "variable,name=st_planning,value=active_enemies=1&(!raid_event.adds.exists|raid_event.adds.in>15)" );
   default_->add_action( "variable,name=major_cooldowns_active,value=pet.gargoyle.active|buff.unholy_assault.up|talent.army_of_the_damned&pet.apoc_ghoul.active|buff.dark_transformation.up" );
-  default_->add_action( "arcane_torrent,if=runic_power.deficit>65&(pet.gargoyle.active|!talent.summon_gargoyle.enabled)&rune.deficit>=5", "Racials" );
-  default_->add_action( "blood_fury,if=variable.major_cooldowns_active|target.time_to_die<=buff.blood_fury.duration" );
-  default_->add_action( "berserking,if=variable.major_cooldowns_active|target.time_to_die<=buff.berserking.duration" );
-  default_->add_action( "lights_judgment,if=buff.unholy_strength.up" );
-  default_->add_action( "ancestral_call,if=variable.major_cooldowns_active|target.time_to_die<=15", "Ancestral Call can trigger 4 potential buffs, each lasting 15 seconds. Utilized hard coded time as a trigger to keep it readable." );
-  default_->add_action( "arcane_pulse,if=active_enemies>=2|(rune.deficit>=5&runic_power.deficit>=60)" );
-  default_->add_action( "fireblood,if=variable.major_cooldowns_active|target.time_to_die<=buff.fireblood.duration" );
-  default_->add_action( "bag_of_tricks,if=buff.unholy_strength.up&active_enemies=1" );
   default_->add_action( "outbreak,if=dot.virulent_plague.refreshable&!talent.unholy_blight&!raid_event.adds.exists", "Maintaining Virulent Plague is a priority" );
   default_->add_action( "outbreak,if=dot.virulent_plague.refreshable&active_enemies>=2&(!talent.unholy_blight|talent.unholy_blight&cooldown.unholy_blight.remains)" );
   default_->add_action( "outbreak,if=runeforge.superstrain&(dot.frost_fever.refreshable|dot.blood_plague.refreshable)" );
   default_->add_action( "wait_for_cooldown,name=soul_reaper,if=talent.soul_reaper&target.time_to_pct_35<5&fight_remains>5&cooldown.soul_reaper.remains<(gcd*0.75)&active_enemies=1" );
   default_->add_action( "call_action_list,name=trinkets", "Action Lists and Openers" );
   default_->add_action( "call_action_list,name=covenants" );
+  default_->add_action( "call_action_list,name=racials" );
   default_->add_action( "sequence,if=active_enemies=1&!death_knight.disable_aotd,name=opener:army_of_the_dead:festering_strike:festering_strike:potion:unholy_blight:dark_transformation:apocalypse" );
   default_->add_action( "call_action_list,name=cooldowns" );
   default_->add_action( "run_action_list,name=aoe_setup,if=active_enemies>=2&(cooldown.death_and_decay.remains<10&!talent.defile|cooldown.defile.remains<10&talent.defile)&!death_and_decay.ticking" );
@@ -348,7 +364,7 @@ void unholy( player_t* p )
 
   cooldowns->add_action( "potion,if=variable.major_cooldowns_active|fight_remains<26", "Potion" );
   cooldowns->add_action( "army_of_the_dead,if=cooldown.unholy_blight.remains<5&cooldown.dark_transformation.remains_expected<5&talent.unholy_blight|!talent.unholy_blight|fight_remains<35", "Cooldowns" );
-  cooldowns->add_action( "soul_reaper,target_if=target.time_to_pct_35<5&target.time_to_die>5" );
+  cooldowns->add_action( "soul_reaper,target_if=target.time_to_pct_35<5&target.time_to_die>5&active_enemies<=3" );
   cooldowns->add_action( "unholy_blight,if=variable.st_planning&(cooldown.apocalypse.remains_expected<5|cooldown.apocalypse.remains_expected>10)&(cooldown.dark_transformation.remains<gcd|buff.dark_transformation.up)", "Holds Blight for up to 5 seconds to sync with Apocalypse, Otherwise, use with Dark Transformation." );
   cooldowns->add_action( "unholy_blight,if=active_enemies>=2|fight_remains<21" );
   cooldowns->add_action( "dark_transformation,if=variable.st_planning&(dot.unholy_blight_dot.remains|!talent.unholy_blight)" );
@@ -385,12 +401,21 @@ void unholy( player_t* p )
   generic_aoe->add_action( "wound_spender,target_if=max:debuff.festering_wound.stack,if=(cooldown.apocalypse.remains>5&debuff.festering_wound.up|debuff.festering_wound.stack>4)&(fight_remains<cooldown.death_and_decay.remains+10|fight_remains>cooldown.apocalypse.remains)" );
   generic_aoe->add_action( "festering_strike,target_if=max:debuff.festering_wound.stack,if=debuff.festering_wound.stack<=3&cooldown.apocalypse.remains<3|debuff.festering_wound.stack<1" );
   generic_aoe->add_action( "festering_strike,target_if=min:debuff.festering_wound.stack,if=cooldown.apocalypse.remains>5&debuff.festering_wound.stack<1" );
-  
+
+  racials->add_action( "arcane_torrent,if=runic_power.deficit>65&(pet.gargoyle.active|!talent.summon_gargoyle.enabled)&rune.deficit>=5", "Racials" );
+  racials->add_action( "blood_fury,if=variable.major_cooldowns_active|target.time_to_die<=buff.blood_fury.duration" );
+  racials->add_action( "berserking,if=variable.major_cooldowns_active|target.time_to_die<=buff.berserking.duration" );
+  racials->add_action( "lights_judgment,if=buff.unholy_strength.up" );
+  racials->add_action( "ancestral_call,if=variable.major_cooldowns_active|target.time_to_die<=15", "Ancestral Call can trigger 4 potential buffs, each lasting 15 seconds. Utilized hard coded time as a trigger to keep it readable." );
+  racials->add_action( "arcane_pulse,if=active_enemies>=2|(rune.deficit>=5&runic_power.deficit>=60)" );
+  racials->add_action( "fireblood,if=variable.major_cooldowns_active|target.time_to_die<=buff.fireblood.duration" );
+  racials->add_action( "bag_of_tricks,if=buff.unholy_strength.up&active_enemies=1" );
+
   trinkets->add_action( "use_item,name=inscrutable_quantum_device,if=(cooldown.unholy_blight.remains|cooldown.dark_transformation.remains)&(pet.army_ghoul.active|pet.apoc_ghoul.active&!talent.army_of_the_damned|target.time_to_pct_20<5)|fight_remains<21", "Trinkets" );
-  trinkets->add_action( "use_item,name=macabre_sheet_music,if=cooldown.apocalypse.remains<5&(!equipped.inscrutable_quantum_device|cooldown.inscrutable_quantum_device.remains)|fight_remains<21" );
-  trinkets->add_action( "use_item,name=dreadfire_vessel,if=cooldown.apocalypse.remains&(!equipped.inscrutable_quantum_device|cooldown.inscrutable_quantum_device.remains)|fight_remains<3" );
-  trinkets->add_action( "use_item,name=darkmoon_deck_voracity,if=cooldown.apocalypse.remains&(!equipped.inscrutable_quantum_device|cooldown.inscrutable_quantum_device.remains)|fight_remains<21" );
-  trinkets->add_action( "use_items,if=(cooldown.apocalypse.remains|buff.dark_transformation.up)&(!equipped.inscrutable_quantum_device|cooldown.inscrutable_quantum_device.remains)" );
+  trinkets->add_action( "use_item,slot=trinket1,if=!variable.specified_trinket&((trinket.1.proc.any_dps.duration<=15&cooldown.apocalypse.remains>20|trinket.1.proc.any_dps.duration>15&(cooldown.unholy_blight.remains>20|cooldown.dark_transformation.remains>20))&(!trinket.2.has_cooldown|trinket.2.cooldown.remains|variable.trinket_priority=1))|trinket.1.proc.any_dps.duration>=fight_remains", "The trinket with the highest estimated value, will be used first and paired with Apocalypse (if buff is 15 seconds or less) or Blight/DT (if greater than 15 seconds)" );
+  trinkets->add_action( "use_item,slot=trinket2,if=!variable.specified_trinket&((trinket.2.proc.any_dps.duration<=15&cooldown.apocalypse.remains>20|trinket.2.proc.any_dps.duration>15&(cooldown.unholy_blight.remains>20|cooldown.dark_transformation.remains>20))&(!trinket.1.has_cooldown|trinket.1.cooldown.remains|variable.trinket_priority=2))|trinket.2.proc.any_dps.duration>=fight_remains" );
+  trinkets->add_action( "use_item,slot=trinket1,if=!trinket.1.has_use_buff&(trinket.2.cooldown.remains|!trinket.2.has_use_buff)", "If only one on use trinket provides a buff, use the other on cooldown. Or if neither trinket provides a buff, use both on cooldown." );
+  trinkets->add_action( "use_item,slot=trinket2,if=!trinket.2.has_use_buff&(trinket.1.cooldown.remains|!trinket.1.has_use_buff)" );
 }
 //unholy_apl_end
 

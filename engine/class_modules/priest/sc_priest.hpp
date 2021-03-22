@@ -54,7 +54,8 @@ struct power_word_shield_t;
 namespace buffs
 {
 struct dispersion_t;
-}
+struct benevolent_faerie_t;
+}  // namespace buffs
 
 /**
  * Priest target data
@@ -442,7 +443,6 @@ public:
   struct
   {
     // Night Fae
-    const spell_data_t* benevolent_faerie;
     const spell_data_t* fae_guardians;
     // Necrolord
     const spell_data_t* unholy_nova;
@@ -941,7 +941,9 @@ struct priest_spell_t : public priest_action_t<spell_t>
       dark_thoughts_proc_percent /= 2;
     }
 
-    if ( rng().roll( dark_thoughts_proc_percent * dots ) )
+    if ( rng().roll( dark_thoughts_proc_percent * swp->is_ticking() ) ||
+         rng().roll( dark_thoughts_proc_percent * vt->is_ticking() ) ||
+         rng().roll( dark_thoughts_proc_percent * dp->is_ticking() ) )
     {
       if ( sim->debug )
       {
@@ -1035,6 +1037,14 @@ struct dispersion_t final : public priest_buff_t<buff_t>
   dispersion_t( priest_t& p );
 };
 
+struct benevolent_faerie_t final : public buff_t
+{
+  std::vector<action_t*> affected_actions;
+  bool affected_actions_initialized;
+
+  benevolent_faerie_t( player_t* p );
+};
+
 }  // namespace buffs
 
 namespace items
@@ -1088,10 +1098,11 @@ struct priest_module_t final : public module_t
   }
   void init( player_t* p ) const override
   {
-    p->buffs.guardian_spirit  = make_buff( p, "guardian_spirit",
+    p->buffs.guardian_spirit   = make_buff( p, "guardian_spirit",
                                           p->find_spell( 47788 ) );  // Let the ability handle the CD
-    p->buffs.pain_suppression = make_buff( p, "pain_suppression",
+    p->buffs.pain_suppression  = make_buff( p, "pain_suppression",
                                            p->find_spell( 33206 ) );  // Let the ability handle the CD
+    p->buffs.benevolent_faerie = make_buff<buffs::benevolent_faerie_t>( p );
   }
   void static_init() const override
   {

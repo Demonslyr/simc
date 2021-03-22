@@ -383,6 +383,9 @@ public:
     const spell_data_t* soul_cleave_rank_3;
     const spell_data_t* thick_skin;
     const spell_data_t* throw_glaive_rank_3;
+
+    // Legendary
+    const spell_data_t* darkglare_boon_refund;
   } spec;
 
   struct azerite_t
@@ -519,6 +522,9 @@ public:
     gain_t* thirsting_blades;
     gain_t* revolving_blades;
     gain_t* memory_of_lucid_dreams;
+
+    // Legendary
+    gain_t* darkglare_boon_refund;
   } gain;
 
   // Benefits
@@ -624,6 +630,7 @@ public:
   void init_base_stats() override;
   void init_procs() override;
   void init_resources( bool force ) override;
+  void init_special_effects() override;
   void init_rng() override;
   void init_scaling() override;
   void init_spells() override;
@@ -2067,6 +2074,12 @@ struct eye_beam_t : public demon_hunter_spell_t
     {
       cooldown->reset( true );
       p()->proc.darkglare_boon_resets->occur();
+      // 02/18/2021 -- Added in PTR build
+      if ( p()->spec.darkglare_boon_refund->ok() )
+      {
+        p()->resource_gain( RESOURCE_FURY, p()->spec.darkglare_boon_refund->effectN( 1 ).resource( RESOURCE_FURY ),
+                            p()->gain.darkglare_boon_refund );
+      }
     }
 
     // Collective Anguish Legendary
@@ -2160,10 +2173,17 @@ struct fel_devastation_t : public demon_hunter_spell_t
     }
 
     // Darkglare Boon Legendary
-    if ( p()->legendary.darkglare_boon->ok() && p()->rng().roll( p()->legendary.darkglare_boon->effectN( 1 ).percent() ) )
+    double darkglare_percent = p()->legendary.darkglare_boon->effectN( 2 ).percent();
+    if ( p()->legendary.darkglare_boon->ok() && p()->rng().roll( darkglare_percent ) )
     {
       cooldown->reset( true );
       p()->proc.darkglare_boon_resets->occur();
+      // 02/18/2021 -- Added in PTR build
+      if ( p()->spec.darkglare_boon_refund->ok() )
+      {
+        p()->resource_gain( RESOURCE_FURY, p()->spec.darkglare_boon_refund->effectN( 2 ).resource( RESOURCE_FURY ),
+                            p()->gain.darkglare_boon_refund );
+      }
     }
 
     // Collective Anquish Legendary
@@ -3075,14 +3095,30 @@ struct elysian_decree_t : public demon_hunter_spell_t
 
 // Fodder to the Flame ======================================================
 
-struct fodder_to_the_flame_t : public demon_hunter_spell_t
+struct fodder_to_the_flame_cb_t : public dbc_proc_callback_t
 {
-  struct fodder_to_the_flame_death_t : public demon_hunter_spell_t
+  struct fodder_to_the_flame_damage_t : public demon_hunter_spell_t
   {
-    fodder_to_the_flame_death_t( util::string_view name, demon_hunter_t* p )
-      : demon_hunter_spell_t( name, p, p->find_spell( 342357 ) )
+    double target_soft_cap;
+
+    fodder_to_the_flame_damage_t( util::string_view name, demon_hunter_t* p )
+      : demon_hunter_spell_t( name, p, p->find_spell( 350631 ) ),
+      target_soft_cap( p->find_spell( 350570 )->effectN( 1 ).base_value() )
     {
-      quiet = true;
+      background = true;
+      aoe = -1;
+    }
+
+    double composite_aoe_multiplier( const action_state_t* state ) const override
+    {
+      double cam = demon_hunter_spell_t::composite_aoe_multiplier( state );
+
+      if ( state->n_targets > target_soft_cap )
+      {
+        cam *= std::sqrt( target_soft_cap / state->n_targets );
+      }
+
+      return cam;
     }
 
     void execute() override
@@ -3092,22 +3128,50 @@ struct fodder_to_the_flame_t : public demon_hunter_spell_t
     }
   };
 
-  fodder_to_the_flame_death_t* death_trigger;
-  timespan_t trigger_delay;
-
-  fodder_to_the_flame_t( demon_hunter_t* p, const std::string& options_str )
-    : demon_hunter_spell_t( "fodder_to_the_flame", p, p->covenant.fodder_to_the_flame, options_str )
+  // Dummy trigger spell in order to trigger Covenant cast callbacks
+  struct fodder_to_the_flame_spawn_trigger_t : public demon_hunter_spell_t
   {
-    death_trigger = p->get_background_action<fodder_to_the_flame_death_t>( "fodder_to_the_flame_death" );
+    struct fodder_to_the_flame_state_t : public action_state_t
+    {
+      fodder_to_the_flame_state_t( action_t* a, player_t* target ) : action_state_t( a, target ) {}
+
+      proc_types2 cast_proc_type2() const override
+      { return PROC2_CAST; }
+    };
+
+    fodder_to_the_flame_spawn_trigger_t( util::string_view name, demon_hunter_t* p )
+      : demon_hunter_spell_t( name, p, p->find_spell( 350570 ) )
+    {
+      quiet = true;
+    }
+
+    proc_types proc_type() const override
+    { return PROC1_NONE_SPELL; }
+
+    action_state_t* new_state() override
+    { return new fodder_to_the_flame_state_t( this, target ); }
+  };
+
+  fodder_to_the_flame_damage_t* damage;
+  fodder_to_the_flame_spawn_trigger_t* spawn_trigger;
+  timespan_t trigger_delay;
+  demon_hunter_t* dh;
+
+  fodder_to_the_flame_cb_t( demon_hunter_t* p, const special_effect_t& e )
+    : dbc_proc_callback_t( p, e ), dh( p )
+  {
+    damage = dh->get_background_action<fodder_to_the_flame_damage_t>( "fodder_to_the_flame" );
+    spawn_trigger = dh->get_background_action<fodder_to_the_flame_spawn_trigger_t>( "fodder_to_the_flame_spawn" );
     trigger_delay = timespan_t::from_seconds( p->options.fodder_to_the_flame_kill_seconds );
   }
 
-  void execute() override
+  void execute( action_t* a, action_state_t* s ) override
   {
-    demon_hunter_spell_t::execute();
-    make_event<delayed_execute_event_t>( *sim, p(), death_trigger, p(), trigger_delay );
+    dbc_proc_callback_t::execute( a, s );
+    make_event<delayed_execute_event_t>( *dh->sim, dh, damage, s->target, trigger_delay );
+    spawn_trigger->execute();
   }
-};
+}; 
 
 // Sinful Brand =============================================================
 
@@ -3275,23 +3339,10 @@ namespace attacks
 
     void execute() override
     {
-      if ( p()->current.distance_to_move > 5 || p()->buff.out_of_range->check() ||
-        ( p()->channeling && p()->channeling->interrupt_auto_attack ) )
+      if ( p()->current.distance_to_move > 5 || p()->buff.out_of_range->check() )
       {
-        status_e s;
-
-        // Cancel autoattacks, auto_attack_t will restart them when we're able to
-        // attack again.
-        if ( p()->channeling && p()->channeling->interrupt_auto_attack )
-        {
-          p()->proc.delayed_aa_channel->occur();
-          s = LOST_CONTACT_CHANNEL;
-        }
-        else
-        {
-          p()->proc.delayed_aa_range->occur();
-          s = LOST_CONTACT_RANGE;
-        }
+        status_e s = LOST_CONTACT_RANGE;
+        p()->proc.delayed_aa_range->occur();
 
         if ( weapon->slot == SLOT_MAIN_HAND )
         {
@@ -3329,11 +3380,13 @@ struct auto_attack_t : public demon_hunter_attack_t
 
   void execute() override
   {
+    p()->main_hand_attack->set_target( target );
     if ( p()->main_hand_attack->execute_event == nullptr )
     {
       p()->main_hand_attack->schedule_execute();
     }
 
+    p()->off_hand_attack->set_target( target );
     if ( p()->off_hand_attack->execute_event == nullptr )
     {
       p()->off_hand_attack->schedule_execute();
@@ -3342,16 +3395,12 @@ struct auto_attack_t : public demon_hunter_attack_t
 
   bool ready() override
   {
-    bool ready = demon_hunter_attack_t::ready();
-
-    if ( ready )  // Range check
-    {
-      if ( p()->main_hand_attack->execute_event == nullptr )
-        return ready;
-
-      if ( p()->off_hand_attack->execute_event == nullptr )
-        return ready;
-    }
+    // Range check
+    if ( !demon_hunter_attack_t::ready() )
+      return false;
+    
+    if ( p()->main_hand_attack->execute_event == nullptr || p()->off_hand_attack->execute_event == nullptr )
+      return true;
 
     return false;
   }
@@ -3521,6 +3570,9 @@ struct blade_dance_base_t : public demon_hunter_attack_t
       dodge_buff->trigger();
     }
   }
+
+  bool has_amount_result() const override
+  { return true; }
 };
 
 struct blade_dance_t : public blade_dance_base_t
@@ -3606,7 +3658,8 @@ struct chaos_strike_base_t : public demon_hunter_attack_t
       assert( eff.type() == E_TRIGGER_SPELL );
       background = dual = true;
 
-      may_refund = ( weapon == &( p->off_hand_weapon ) );
+      // Disable refunds on secondary procs such as Relentless Onslaught
+      may_refund = ( weapon == &( p->off_hand_weapon ) ) && !a->from_onslaught;
       if ( may_refund )
       {
         refund_proc_chance = p->spec.chaos_strike_refund->proc_chance();
@@ -3648,7 +3701,7 @@ struct chaos_strike_base_t : public demon_hunter_attack_t
     {
       demon_hunter_attack_t::execute();
 
-      // Technically this appears to have a 0.5s ICD, but this is not relevant at the moment
+      // Technically this appears to have a 0.5s ICD, but this is handled elsewhere
       if ( may_refund && p()->rng().roll( this->get_refund_proc_chance() ) )
       {
         p()->resource_gain( RESOURCE_FURY, p()->spec.chaos_strike_fury->effectN( 1 ).resource( RESOURCE_FURY ), parent->gain );
@@ -3665,7 +3718,7 @@ struct chaos_strike_base_t : public demon_hunter_attack_t
     {
       demon_hunter_attack_t::impact( s );
 
-      // TOCHECK: Double check the timing of this as well as the ICD and refunds
+      // 02/09/2021 -- Confirmed that due to timing changes, Onslaught can't proc refunds
       if ( result_is_hit( s->result ) && may_refund && p()->conduit.relentless_onslaught->ok() )
       {
         if ( p()->rng().roll( p()->conduit.relentless_onslaught.percent() ) )
@@ -3680,14 +3733,19 @@ struct chaos_strike_base_t : public demon_hunter_attack_t
   };
 
   std::vector<chaos_strike_damage_t*> attacks;
+  bool from_onslaught;
 
-  chaos_strike_base_t( util::string_view n, demon_hunter_t* p, const spell_data_t* s, const std::string& options_str = "" )
-    : demon_hunter_attack_t( n, p, s, options_str )
+  chaos_strike_base_t( util::string_view n, demon_hunter_t* p, const spell_data_t* s, const std::string& options_str = "", bool from_onslaught = false )
+    : demon_hunter_attack_t( n, p, s, options_str ),
+    from_onslaught( from_onslaught )
   {
   }
 
   double cost() const override
   {
+    if ( from_onslaught )
+      return 0.0;
+
     double c = demon_hunter_attack_t::cost();
 
     c = std::max( 0.0, c - p()->buff.thirsting_blades->check() );
@@ -3748,12 +3806,15 @@ struct chaos_strike_base_t : public demon_hunter_attack_t
     // Seething Power
     p()->buff.seething_power->trigger();
   }
+
+  bool has_amount_result() const override
+  { return true; }
 };
 
 struct chaos_strike_t : public chaos_strike_base_t
 {
-  chaos_strike_t( util::string_view name, demon_hunter_t* p, const std::string& options_str = "" )
-    : chaos_strike_base_t( name, p, p->spec.chaos_strike, options_str )
+  chaos_strike_t( util::string_view name, demon_hunter_t* p, const std::string& options_str = "", bool from_onslaught = false )
+    : chaos_strike_base_t( name, p, p->spec.chaos_strike, options_str, from_onslaught )
   {
     if ( attacks.empty() )
     {
@@ -3761,7 +3822,7 @@ struct chaos_strike_t : public chaos_strike_base_t
       attacks.push_back( p->get_background_action<chaos_strike_damage_t>( fmt::format( "{}_damage_2", name ), data().effectN( 3 ), this ) );
     }
 
-    if ( p->active.relentless_onslaught )
+    if ( !from_onslaught && p->active.relentless_onslaught )
     {
       add_child( p->active.relentless_onslaught );
     }
@@ -3782,8 +3843,8 @@ struct chaos_strike_t : public chaos_strike_base_t
 
 struct annihilation_t : public chaos_strike_base_t
 {
-  annihilation_t( util::string_view name, demon_hunter_t* p, const std::string& options_str = "" )
-    : chaos_strike_base_t( name, p, p->spec.annihilation, options_str )
+  annihilation_t( util::string_view name, demon_hunter_t* p, const std::string& options_str = "", bool from_onslaught = false )
+    : chaos_strike_base_t( name, p, p->spec.annihilation, options_str, from_onslaught )
   {
     if ( attacks.empty() )
     {
@@ -3791,7 +3852,7 @@ struct annihilation_t : public chaos_strike_base_t
       attacks.push_back( p->get_background_action<chaos_strike_damage_t>( fmt::format( "{}_damage_2", name ), data().effectN( 3 ), this ) );
     }
 
-    if ( p->active.relentless_onslaught_annihilation )
+    if ( !from_onslaught && p->active.relentless_onslaught_annihilation )
     {
       add_child( p->active.relentless_onslaught_annihilation );
     }
@@ -4808,7 +4869,6 @@ action_t* demon_hunter_t::create_action( util::string_view name, const std::stri
   if ( name == "spirit_bomb" )        return new spirit_bomb_t( this, options_str );
 
   if ( name == "elysian_decree" )     return new elysian_decree_t( this, options_str );
-  if ( name == "fodder_to_the_flame" )return new fodder_to_the_flame_t( this, options_str );
   if ( name == "sinful_brand" )       return new sinful_brand_t( this, options_str );
   if ( name == "the_hunt" )           return new the_hunt_t( this, options_str );
 
@@ -4946,7 +5006,8 @@ void demon_hunter_t::create_buffs()
   // Fake Growing Inferno buff for tracking purposes
   buff.growing_inferno = make_buff<buff_t>( this, "growing_inferno", conduit.growing_inferno )
     ->set_default_value( conduit.growing_inferno.percent() )
-    ->set_max_stack( 10 ) // 12/02/2020 - Manual hotfix, not in spell data
+    // 12/02/2020 - Manual hotfix, not in spell data
+    ->set_max_stack( conduit.growing_inferno->ok() ? (int)( 10 / conduit.growing_inferno.percent() ) : 1 )
     ->set_duration( 20_s );
 
   buff.soul_furance = make_buff<buff_t>( this, "soul_furance", conduit.soul_furnace->effectN( 1 ).trigger() )
@@ -5223,8 +5284,7 @@ void demon_hunter_t::init_procs()
   base_t::init_procs();
 
   // General
-  proc.delayed_aa_range               = get_proc( "delayed_swing__out_of_range" );
-  proc.delayed_aa_channel             = get_proc( "delayed_swing__channeling" );
+  proc.delayed_aa_range               = get_proc( "delayed_aa_out_of_range" );
   proc.soul_fragment_greater          = get_proc( "soul_fragment_greater" );
   proc.soul_fragment_greater_demon    = get_proc( "soul_fragment_greater_demon" );
   proc.soul_fragment_empowered_demon  = get_proc( "soul_fragment_empowered_demon" );
@@ -5260,6 +5320,24 @@ void demon_hunter_t::init_resources( bool force )
 
   resources.current[ RESOURCE_FURY ] = options.initial_fury;
   expected_max_health = calculate_expected_max_health();
+}
+
+// demon_hunter_t::init_special_effects =====================================
+
+void demon_hunter_t::init_special_effects()
+{
+  base_t::init_special_effects();
+
+  if ( covenant.fodder_to_the_flame->ok() )
+  {
+    auto const fodder_to_the_flame_driver = new special_effect_t( this );
+    fodder_to_the_flame_driver->name_str = "fodder_to_the_flame_driver";
+    fodder_to_the_flame_driver->spell_id = 350570;
+    special_effects.push_back( fodder_to_the_flame_driver );
+
+    auto cb = new actions::spells::fodder_to_the_flame_cb_t( this, *fodder_to_the_flame_driver );
+    cb->initialize();
+  }
 }
 
 // demon_hunter_t::init_rng =================================================
@@ -5522,6 +5600,8 @@ void demon_hunter_t::init_spells()
   legendary.fel_flame_fortification       = find_runeforge_legendary( "Fel Flame Fortification" );
   legendary.spirit_of_the_darkness_flame  = find_runeforge_legendary( "Spirit of the Darkness Flame" );
 
+  spec.darkglare_boon_refund = ( legendary.darkglare_boon->ok() ) ? find_spell( 350726 ) : spell_data_t::not_found();
+
   // Spell Initialization ===================================================
 
   using namespace actions::attacks;
@@ -5544,10 +5624,8 @@ void demon_hunter_t::init_spells()
 
   if ( conduit.relentless_onslaught.ok() && specialization() == DEMON_HUNTER_HAVOC )
   {
-    active.relentless_onslaught = get_background_action<chaos_strike_t>( "chaos_strike_onslaught" );
-    active.relentless_onslaught->base_costs.fill( 0 );
-    active.relentless_onslaught_annihilation = get_background_action<annihilation_t>( "annihilation_onslaught" );
-    active.relentless_onslaught_annihilation->base_costs.fill( 0 );
+    active.relentless_onslaught = get_background_action<chaos_strike_t>( "chaos_strike_onslaught", "", true );
+    active.relentless_onslaught_annihilation = get_background_action<annihilation_t>( "annihilation_onslaught", "", true );
   }
 }
 
@@ -5713,6 +5791,7 @@ void demon_hunter_t::apl_havoc()
 {
   action_priority_list_t* apl_default = get_action_priority_list( "default" );
   apl_default->add_action( "auto_attack" );
+  apl_default->add_action( "retarget_auto_attack,line_cd=1,target_if=min:debuff.burning_wound.remains,if=runeforge.burning_wound&talent.demon_blades.enabled" );
   apl_default->add_action( "variable,name=blade_dance,if=!runeforge.chaos_theory,value=talent.first_blood.enabled|spell_targets.blade_dance1>=(3-talent.trail_of_ruin.enabled)", "Without Chaos Theory, Blade Dance with First Blood or at 3+ (2+ with Trail of Ruin) targets" );
   apl_default->add_action( "variable,name=blade_dance,if=runeforge.chaos_theory,value=buff.chaos_theory.down|talent.first_blood.enabled&spell_targets.blade_dance1>=(2-talent.trail_of_ruin.enabled)|!talent.cycle_of_hatred.enabled&spell_targets.blade_dance1>=(4-talent.trail_of_ruin.enabled)", "With Chaos Theory, Blade Dance when the buff is down, with First Blood at 2+ (1+ with Trail of Ruin) or with Essence Break at 4+ (3+ with Trail of Ruin) targets" );
   apl_default->add_action( "variable,name=pooling_for_meta,value=!talent.demonic.enabled&cooldown.metamorphosis.remains<6&fury.deficit>30" );
@@ -5734,7 +5813,6 @@ void demon_hunter_t::apl_havoc()
   apl_cooldown->add_action( this, "Metamorphosis", "if=talent.demonic.enabled&(cooldown.eye_beam.remains>20&(!variable.blade_dance|cooldown.blade_dance.remains>gcd.max))&(!covenant.venthyr.enabled|!dot.sinful_brand.ticking)" );
   apl_cooldown->add_action( "sinful_brand,if=!dot.sinful_brand.ticking" );
   apl_cooldown->add_action( "the_hunt,if=!talent.demonic.enabled&!variable.waiting_for_momentum|buff.furious_gaze.up" );
-  apl_cooldown->add_action( "fodder_to_the_flame" );
   apl_cooldown->add_action( "elysian_decree,if=(active_enemies>desired_targets|raid_event.adds.in>30)" );
   apl_cooldown->add_action( "potion,if=buff.metamorphosis.remains>25|fight_remains<60" );
   add_havoc_use_items( this, apl_cooldown );
@@ -5818,7 +5896,6 @@ void demon_hunter_t::apl_vengeance()
   cooldowns->add_action( "use_items", "Default fallback for usable items." );
   cooldowns->add_action( "sinful_brand,if=!dot.sinful_brand.ticking" );
   cooldowns->add_action( "the_hunt" );
-  cooldowns->add_action( "fodder_to_the_flame" );
   cooldowns->add_action( "elysian_decree" );
 
   action_priority_list_t* apl_brand = get_action_priority_list( "brand", "Fiery Brand Rotation" );
@@ -5892,6 +5969,9 @@ void demon_hunter_t::create_gains()
   gain.thirsting_blades         = get_gain( "thirsting_blades" );
   gain.revolving_blades         = get_gain( "revolving_blades" );
   gain.memory_of_lucid_dreams   = get_gain( "memory_of_lucid_dreams_proc" );
+
+  // Legendary
+  gain.darkglare_boon_refund    = get_gain( "darkglare_boon_refund" );
 }
 
 // demon_hunter_t::create_benefits ==========================================
@@ -6341,11 +6421,6 @@ void demon_hunter_t::target_mitigation( school_e school, result_amount_type dt, 
   if ( s->result_amount <= 0 )
   {
     return;
-  }
-
-  if ( buff.empowered_demon_soul->check() )
-  {
-    s->result_amount *= 1.0 + buff.empowered_demon_soul->data().effectN( 4 ).percent();
   }
 
   if ( specialization() == DEMON_HUNTER_HAVOC )

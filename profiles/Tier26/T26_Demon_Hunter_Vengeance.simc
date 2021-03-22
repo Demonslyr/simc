@@ -52,7 +52,6 @@ actions.cooldowns=potion
 actions.cooldowns+=/use_items
 actions.cooldowns+=/sinful_brand,if=!dot.sinful_brand.ticking
 actions.cooldowns+=/the_hunt
-actions.cooldowns+=/fodder_to_the_flame
 actions.cooldowns+=/elysian_decree
 
 # Defensives
@@ -92,11 +91,11 @@ off_hand=poxstorm_longsword_of_pestilence,id=178754,bonus_id=3535/4786/1540,ench
 
 # Gear Summary
 # gear_ilvl=228.75
-# gear_agility=875
-# gear_stamina=1517
+# gear_agility=874
+# gear_stamina=1518
 # gear_attack_power=40
-# gear_crit_rating=581
-# gear_haste_rating=718
-# gear_mastery_rating=148
-# gear_versatility_rating=496
+# gear_crit_rating=586
+# gear_haste_rating=720
+# gear_mastery_rating=150
+# gear_versatility_rating=501
 # gear_armor=607

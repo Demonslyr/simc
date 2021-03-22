@@ -1,5 +1,5 @@
-// Item effects, wow build 9.0.2.37415
-static const std::array<item_effect_t, 7495> __ptr_item_effect_data { {
+// Item effects, wow build 9.0.5.37893
+static const std::array<item_effect_t, 7497> __ptr_item_effect_data { {
   { 116657, 317388,      0,   0,   1,    0,      -1,      -1 }, // Shroud of Resolve
   { 116658, 317389,      0,   0,   1,    0,      -1,      -1 }, // Shroud of Resolve
   { 116661, 317407,      0,   0,   1,    0,      -1,      -1 }, // Shroud of Resolve
@@ -181,7 +181,7 @@ static const std::array<item_effect_t, 7495> __ptr_item_effect_data { {
   { 126460, 338658,      0,   0,   1,    0,      -1,      -1 }, // Draught of Deep Focus
   { 126461, 338661,      0,   0,   1,    0,      -1,      -1 }, // Oneth's Clear Vision
   { 126462, 338668,      0,   0,   1,    0,      -1,      -1 }, // Primordial Arcanic Pulsar
-  { 126463, 339144,      0,   0,   1,    0,      -1,      -1 }, // Cat-eye Curio
+  { 126463, 339144,      0,   0,   1,    0,      -1,      -1 }, // Cat-Eye Curio
   { 126464, 339141,      0,   0,   1,    0,      -1,      -1 }, // Eye of Fearful Symmetry
   { 126465, 339139,      0,   0,   1,    0,      -1,      -1 }, // Apex Predator's Craving
   { 126466, 339060,      0,   0,   1,    0,      -1,      -1 }, // Luffa-Infused Embrace
@@ -1074,7 +1074,7 @@ static const std::array<item_effect_t, 7495> __ptr_item_effect_data { {
   {   4086,   5005,  22645,   0,   0,   11,       0,    1000 }, // Food
   {   4090,  28200,  22678,   0,   0, 1141,   60000,   20000 }, // Ascendance
   {  19982,  28282,  22691,   0,   1,    0,      -1,      -1 }, // Ashbringer
-  {  19983,  28414,  22691,   1,   2,    0,      -1,      -1 },
+  {  19983,  28414,  22691,   1,   1,    0,      -1,      -1 },
   {  19984,  29155,  22691,   4,   2,    0,      -1,      -1 }, // Drain Life
   {   4159,  28516,  22783,   0,   0, 1139,  600000,  600000 }, // Sunwell Torrent
   {   4160,  28516,  22784,   0,   0, 1139,  600000,  600000 }, // Sunwell Torrent
@@ -7470,7 +7470,7 @@ static const std::array<item_effect_t, 7495> __ptr_item_effect_data { {
   { 135980, 344806, 184028,   0,   1,    0,      -1,      -1 }, // Crimson Chorus
   { 135910, 344243, 184029,   0,   1,    0,      -1,      -1 }, // Manabound Mirror
   { 135911, 344245, 184029,   1,   0,    0,      -1,      -1 }, // Manabound Mirror
-  { 135969, 344732, 184030,   0,   0,    0,      -1,      -1 }, // Dreadfire Vessel
+  { 135969, 349857, 184030,   0,   0,    0,      -1,      -1 }, // Dreadfire Vessel
   { 135909, 344231, 184031,   0,   0,    0,      -1,      -1 }, // Sanguine Vintage
   { 135897, 336126, 184052,   0,   0,    0,      -1,      -1 }, // Gladiator's Medallion
   { 135898, 336128, 184053,   0,   1,    0,      -1,      -1 }, // Relentless
@@ -7495,9 +7495,11 @@ static const std::array<item_effect_t, 7495> __ptr_item_effect_data { {
   { 136364, 348136, 184841,   1,   0,    0,      -1,      -1 }, // Lyre of Sacred Purpose
   { 136365, 348138, 184842,   0,   1,    0,      -1,      -1 }, // Instructor's Divine Bell
   { 136366, 348139, 184842,   1,   0,    0,      -1,      -1 }, // Instructor's Divine Bell
+  { 138330, 348718, 184873,   0,   0,    0,      -1,      -1 }, // Soul Ignition (Test)
+  { 138331, 345214, 184873,   1,   1,    0,      -1,      -1 }, // Soul Ignition
 } };
 
-static const std::array<uint16_t, 7495> __ptr_item_effect_id_index { {
+static const std::array<uint16_t, 7497> __ptr_item_effect_id_index { {
     293,   294,   295,   296,   297,   298,   299,   302,
     303,   304,   305,   306,   307,   308,   309,   310,
     311,   312,   313,   314,   317,   318,   319,   320,
@@ -8434,6 +8436,7 @@ static const std::array<uint16_t, 7495> __ptr_item_effect_id_index { {
    7396,  7397,  7351,  7352,  7353,  7361,  7362,  7360,
    7358,  7363,  7367,  7368,  7364,  7365,  7366,  7369,
    7407,   224,   225,  7430,  7418,  7487,  7441,  7488,
-   7384,  7489,  7490,  7491,  7492,  7493,  7494,
+   7384,  7489,  7490,  7491,  7492,  7493,  7494,  7495,
+   7496,
 } };
 

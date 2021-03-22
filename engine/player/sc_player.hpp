@@ -505,6 +505,14 @@ struct player_t : public actor_t
     buff_t* focus_magic; // Mage talent
     buff_t* power_infusion; // Priest spell
 
+    // 9.0 class covenant buffs
+    buff_t* benevolent_faerie; // Night Fae Priest spell
+    buff_t* blessing_of_summer; // Night Fae Paladin spell
+    buff_t* blessing_of_autumn; // Night Fae Paladin spell
+    buff_t* blessing_of_winter; // Night Fae Paladin spell
+    buff_t* blessing_of_spring; // Night Fae Paladin spell
+    buff_t* conquerors_banner; // Necrolord Warrior spell
+
     // 9.0 Soulbinds
     buff_t* wild_hunt_tactics;  // night_fae/korayn - dummy buff used to quickly check if soulbind is enabled
     buff_t* volatile_solvent_damage; // necrolord/marileth - elemental (magic) and giant (physical) % damage done buffs
@@ -537,6 +545,12 @@ struct player_t : public actor_t
   {
     bool focus_magic;
     std::vector<timespan_t> power_infusion;
+    std::vector<timespan_t> benevolent_faerie;
+    std::vector<timespan_t> blessing_of_summer;
+    std::vector<timespan_t> blessing_of_autumn;
+    std::vector<timespan_t> blessing_of_winter;
+    std::vector<timespan_t> blessing_of_spring;
+    std::vector<timespan_t> conquerors_banner;
   } external_buffs;
 
   struct gains_t
@@ -563,6 +577,10 @@ struct player_t : public actor_t
   struct procs_t
   {
     proc_t* parry_haste;
+    proc_t* delayed_aa_cast;
+    proc_t* delayed_aa_channel;
+    proc_t* reset_aa_cast;
+    proc_t* reset_aa_channel;
   } procs;
 
   struct uptimes_t
@@ -1099,7 +1117,8 @@ public:
   virtual movement_direction_type movement_direction() const
   { return current.movement_direction; }
 
-  virtual void reset_auto_attacks( timespan_t delay = timespan_t::zero() );
+  virtual void reset_auto_attacks( timespan_t delay = timespan_t::zero(), proc_t* proc = nullptr );
+  virtual void delay_auto_attacks( timespan_t delay, proc_t* proc = nullptr );
 
   virtual void acquire_target( retarget_source /* event */, player_t* /* context */ = nullptr );
 

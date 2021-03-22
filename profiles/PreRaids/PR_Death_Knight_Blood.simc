@@ -31,6 +31,8 @@ actions.precombat+=/snapshot_stats
 
 # Executed every time the actor is available.
 actions=auto_attack
+# Interrupt
+actions+=/mind_freeze,if=target.debuff.casting.react
 actions+=/blood_fury,if=cooldown.dancing_rune_weapon.ready&(!cooldown.blooddrinker.ready|!talent.blooddrinker.enabled)
 actions+=/berserking
 actions+=/arcane_pulse,if=active_enemies>=2|rune<1&runic_power.deficit>60
@@ -109,9 +111,9 @@ main_hand=rimebinders_runeblade,id=178780,bonus_id=6807/1498/6646,enchant=rune_o
 # Gear Summary
 # gear_ilvl=184.40
 # gear_strength=588
-# gear_stamina=861
-# gear_crit_rating=281
-# gear_haste_rating=322
-# gear_mastery_rating=99
-# gear_versatility_rating=669
+# gear_stamina=860
+# gear_crit_rating=284
+# gear_haste_rating=324
+# gear_mastery_rating=100
+# gear_versatility_rating=672
 # gear_armor=1025

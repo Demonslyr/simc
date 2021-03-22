@@ -1193,8 +1193,8 @@ std::string get_api_key()
 /// Setup a periodic check for Bloodlust
 struct bloodlust_check_t : public event_t
  {
-   bloodlust_check_t( sim_t& sim ) :
-     event_t( sim, timespan_t::from_seconds( 1.0 ) )
+   bloodlust_check_t( sim_t& sim, timespan_t time_until_next_check = timespan_t::from_seconds( 1.0 ) ) :
+     event_t( sim, time_until_next_check )
    {
    }
 
@@ -1207,7 +1207,7 @@ struct bloodlust_check_t : public event_t
      player_t* t = sim.target;
      if ( ( sim.bloodlust_percent  > 0                  && t -> health_percentage() <  sim.bloodlust_percent ) ||
           ( sim.bloodlust_time     < timespan_t::zero() && t -> time_to_percent( 0.0 ) < -sim.bloodlust_time ) ||
-          ( sim.bloodlust_time     > timespan_t::zero() && sim.current_time() >  sim.bloodlust_time ) )
+          ( sim.bloodlust_time     >= timespan_t::zero() && sim.current_time() >=  sim.bloodlust_time ) )
      {
        if ( ! sim.single_actor_batch )
        {
@@ -1483,6 +1483,7 @@ sim_t::sim_t() :
   challenge_mode( false ), timewalk( -1 ), scale_to_itemlevel( -1 ), scale_itemlevel_down_only( false ),
   disable_set_bonuses( false ), disable_2_set( 1 ), disable_4_set( 1 ), enable_2_set( 1 ), enable_4_set( 1 ),
   pvp_crit( false ),
+  pvp_rules(),
   auto_attacks_always_land( false ),
   log_spell_id(),
   active_enemies( 0 ), active_allies( 0 ),
@@ -1505,7 +1506,7 @@ sim_t::sim_t() :
   merge_time(), init_time(), analyze_time(),
   report_iteration_data( 0.025 ), min_report_iteration_data( -1 ),
   report_progress( 1 ),
-  bloodlust_percent( 25 ), bloodlust_time( timespan_t::from_seconds( 0.5 ) ),
+  bloodlust_percent( 25 ), bloodlust_time( timespan_t::from_seconds( 0 ) ),
   // Report
   report_precision(2), report_pets_separately( 0 ), report_targets( 1 ), report_details( 1 ), report_raw_abilities( 1 ),
   report_rng( 0 ), hosted_html( 0 ),
@@ -1881,7 +1882,7 @@ void sim_t::combat_begin()
 
   if ( overrides.bloodlust )
   {
-     make_event<bloodlust_check_t>( *this, *this );
+    make_event<bloodlust_check_t>( *this, *this, timespan_t::from_seconds( 0.0 ) );
   }
 
   if ( fixed_time || ( target -> resources.base[ RESOURCE_HEALTH ] == 0 ) )
@@ -2492,6 +2493,13 @@ void sim_t::init_actor( player_t* p )
     // First, create all the action objects and set up action lists properly
     p -> create_actions();
 
+    // More initilization of class modules. Needed to create shared actions provided by a class.
+    for ( player_e i = PLAYER_NONE; i < PLAYER_MAX; ++i )
+    {
+      const module_t* m = module_t::get( i );
+      if ( m ) m -> create_actions( p );
+    }
+
     // Create persistent actors from dynamic spawners
     spawner::create_persistent_actors( *p );
 
@@ -2612,6 +2620,9 @@ void sim_t::init()
     }
     scale_itemlevel_down_only = true;
   }
+
+  if ( pvp_crit )
+    pvp_rules = dbc::find_spell( this, 134735 );
 
   // set scaling metric
   if ( ! scaling -> scale_over.empty() )
@@ -3798,6 +3809,10 @@ void sim_t::create_options()
     shadowlands_opts.stone_legionnaires_in_party, 0, 4 ) );
   add_option( opt_uint( "shadowlands.crimson_choir_in_party",
     shadowlands_opts.crimson_choir_in_party, 0, 4 ) );
+  add_option( opt_timespan( "shadowlands.memory_of_past_sins_precast",
+    shadowlands_opts.memory_of_past_sins_precast, 0_s, 30_s ) );
+  add_option( opt_uint( "shadowlands.shattered_psyche_allies",
+    shadowlands_opts.shattered_psyche_allies, 0, 4 ) );
   add_option( opt_float( "shadowlands.judgment_of_the_arbiter_arc_chance",
     shadowlands_opts.judgment_of_the_arbiter_arc_chance, 0.0, 1.0 ) );
   add_option( opt_string( "shadowlands.volatile_solvent_type", shadowlands_opts.volatile_solvent_type ) );
@@ -3815,6 +3830,7 @@ void sim_t::create_options()
     shadowlands_opts.iqd_stat_fail_chance, 0.0, 1.0 ) );
   add_option( opt_float( "shadowlands.thrill_seeker_killing_blow_chance",
                          shadowlands_opts.thrill_seeker_killing_blow_chance, 0.0, 1.0 ) );
+  add_option( opt_float( "shadowlands.wild_hunt_tactics_duration_multiplier", shadowlands_opts.wild_hunt_tactics_duration_multiplier ) );
 }
 
 // sim_t::parse_option ======================================================
