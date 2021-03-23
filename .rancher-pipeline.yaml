@@ -9,7 +9,7 @@ stages:
       registry: docker.atriarch.systems
     env:
       PLUGIN_MTU: "1400"
-timeout: 15
+timeout: 25
 branch:
   include:
   - shadowlands
