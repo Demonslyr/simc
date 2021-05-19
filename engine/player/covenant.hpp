@@ -5,19 +5,12 @@
 #ifndef COVENANT_HPP
 #define COVENANT_HPP
 
+#include "action/dbc_proc_callback.hpp"
+#include "report/reports.hpp"
 #include "util/format.hpp"
 #include "util/span.hpp"
 #include "util/string_view.hpp"
 #include "util/timespan.hpp"
-#include "util/cache.hpp"
-
-#include "report/reports.hpp"
-
-#include "item/special_effect.hpp"
-#include "action/sc_action_state.hpp"
-#include "action/dbc_proc_callback.hpp"
-
-#include "interfaces/bcp_api.hpp"
 
 #include "rapidjson/document.h"
 
@@ -94,6 +87,9 @@ class covenant_state_t
   /// A list of currently enabled soulbind abilities for the actor
   std::vector<unsigned>        m_soulbinds;
 
+  /// A list of currently enabled renown abilities for the actor
+  std::vector<unsigned>        m_renown;
+
   /// Soulbind character string
   std::string                  m_soulbind_id;
 
@@ -102,6 +98,9 @@ class covenant_state_t
 
   /// Covenant option string (user input)
   std::string                  m_covenant_str;
+
+  /// Covenant renown level (user input)
+  unsigned                     m_renown_level;
 
 public:
   covenant_state_t() = delete;
@@ -131,12 +130,21 @@ public:
   unsigned id() const
   { return static_cast<unsigned>( m_covenant ); }
 
+  unsigned renown() const
+  { return m_renown_level; }
+
   /// Parse player-scope "covenant" option
   bool parse_covenant( sim_t* sim, util::string_view name, util::string_view value );
 
   /// Parse player-scope "soulbind" option
   bool parse_soulbind( sim_t* sim, util::string_view name, util::string_view value );
   bool parse_soulbind_clear( sim_t* sim, util::string_view name, util::string_view value );
+
+  /// Parse player-scope "renown" option
+  bool parse_renown( sim_t* sim, util::string_view name, util::string_view value );
+
+  /// Sets renown level and looks up renown abilities based on the level.
+  void set_renown_level( unsigned renown_level );
 
   /// Retrieve covenant ability spell data. Returns spell_data_t::not_found if covenant
   /// ability is not enabled on the actor. Returns spell_data_t::nil if covenant ability
@@ -180,6 +188,9 @@ public:
 
   /// List of soulbind spells
   const std::vector<unsigned>& soulbind_spells() const { return m_soulbinds; }
+
+  /// List of renown spells
+  const std::vector<unsigned>& renown_spells() const { return m_renown; }
 
   /// Callback for handling soulbinds that proc when covenant class ability is used
   dbc_proc_callback_t* cast_callback = nullptr;

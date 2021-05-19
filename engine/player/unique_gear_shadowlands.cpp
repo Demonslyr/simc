@@ -430,8 +430,12 @@ void darkmoon_deck_voracity( special_effect_t& effect )
     {
       may_crit = false;
 
-      buff = make_buff<stat_buff_t>( player, "voracious_haste", e.driver()->effectN( 2 ).trigger(), item )
-        ->add_stat( STAT_HASTE_RATING, 0 );
+      buff = debug_cast<stat_buff_t*>( buff_t::find( player, "voracious_haste" ) );
+      if ( !buff )
+      {
+        buff = make_buff<stat_buff_t>( player, "voracious_haste", e.driver()->effectN( 2 ).trigger(), item )
+          ->add_stat( STAT_HASTE_RATING, 0 );
+      }
     }
 
     void execute() override
@@ -450,7 +454,8 @@ void darkmoon_deck_voracity( special_effect_t& effect )
 void stone_legion_heraldry( special_effect_t& effect )
 {
   double amount   = effect.driver()->effectN( 1 ).average( effect.item );
-  amount = item_database::apply_combat_rating_multiplier( *effect.item, amount );
+  if ( ! effect.player -> dbc -> ptr )
+    amount = item_database::apply_combat_rating_multiplier( *effect.item, amount );
   unsigned allies = effect.player->sim->shadowlands_opts.stone_legionnaires_in_party;
   double mul      = 1.0 + effect.driver()->effectN( 2 ).percent() * allies;
 
@@ -703,7 +708,7 @@ void memory_of_past_sins( special_effect_t& effect )
       auto td = player->get_target_data( t );
 
       // Assume we get about half of the value from each application of the extra ally stacks (4 allies = 2 stacks on player's first hit, 22 stacks on player's last hit etc.)
-      int base_dmg_stacks = td->debuff.shattered_psyche->stack() * (player->sim->shadowlands_opts.shattered_psyche_allies + 1);
+      int base_dmg_stacks = td->debuff.shattered_psyche->check() * (player->sim->shadowlands_opts.shattered_psyche_allies + 1);
       int bonus_dmg_stacks = player->sim->shadowlands_opts.shattered_psyche_allies / 2;
       m *= 1.0 + ( base_dmg_stacks + bonus_dmg_stacks ) * td->debuff.shattered_psyche->check_value();
       return m;
@@ -1295,7 +1300,7 @@ void infinitely_divisible_ooze( special_effect_t& effect )
  * - illusion: ??? (not tested yet, priority unknown)
  * - execute damage: Deal damage to the target if it is an enemy with less than 20% health remaining.
  *                   The 20% is not in spell data and this also always crits.
- * - healer mana: triggers on a nearby healer with less than 20% mana. Higher priority than secondary
+ * - healer mana: Triggers on a nearby healer with less than 20% mana. Higher priority than secondary
  *                stat buffs, but priority relative to other effects not tested.
  * - secondary stat buffs:
  *   - The secondary stat granted appears to be randomly selected from stat from the player's two highest
@@ -1380,7 +1385,7 @@ void inscrutable_quantum_device ( special_effect_t& effect )
     {
       proc_spell_t::execute();
 
-      if ( target->health_percentage() <= 20 && !player->sim->shadowlands_opts.disable_iqd_execute)
+      if ( target->health_percentage() <= 20 && !player->sim->shadowlands_opts.disable_iqd_execute )
       {
         execute_damage->set_target( target );
         execute_damage->execute();
@@ -1396,7 +1401,7 @@ void inscrutable_quantum_device ( special_effect_t& effect )
 
         if ( is_buff_extended() )
         {
-          buff = buffs[s1];
+          buff = buffs[ s1 ];
           duration_adjustment = 5_s;
         }
         else
@@ -1405,9 +1410,9 @@ void inscrutable_quantum_device ( special_effect_t& effect )
             return;
           for ( auto s : ratings )
           {
-            auto v = player->get_stat_value( s );
-            if ( ( s2 == STAT_NONE || v > player->get_stat_value( s2 ) ) &&
-                 ( ( player->bugs && v < player->get_stat_value( s1 ) ) || ( !player->bugs && s != s1 ) ) )
+            auto v = util::stat_value( player, s );
+            if ( ( s2 == STAT_NONE || v > util::stat_value( player, s2 ) ) &&
+                 ( ( player->bugs && v < util::stat_value( player, s1 ) ) || ( !player->bugs && s != s1 ) ) )
               s2 = s;
           }
           buff = rng().roll( 0.5 ) ? buffs[ s1 ] : buffs[ s2 ];
@@ -1606,6 +1611,15 @@ void bloodspattered_scale( special_effect_t& effect )
   }
 }
 
+/**Shadowgrasp Totem
+ * id=331523 driver with totem summon
+ * id=331532 periodic dummy trigger (likely handling the retargeting) controls the tick rate
+ * id=329878 scaling spell containing CDR, damage, and healing dummy parameters
+ *           effect #1: scaled damage
+ *           effect #2: scaled healing
+ *           effect #3: CDR on target kill (in seconds)
+ * id=331537 damage spell and debuff with death proc trigger
+ */
 void shadowgrasp_totem( special_effect_t& effect )
 {
   struct shadowgrasp_totem_damage_t : public generic_proc_t
@@ -1622,9 +1636,16 @@ void shadowgrasp_totem( special_effect_t& effect )
     void init_finished() override
     {
       generic_proc_t::init_finished();
-
       parent = player->find_action( "use_item_shadowgrasp_totem" );
     }
+
+    // Doesn't appear to benefit from player target multipliers due to being a pet
+    // Bypass the player->composite_player_target_multiplier() call in action_t::composite_target_multiplier()
+    // We can't disable STATE_TGT_MUL_TA | STATE_TGT_MUL_DA since it benefits from Chaos Brand
+    // TODO: This should probably be fixed in some better way by changing the damage source
+    //       Pet damage modifiers appear to work on this totem, for example BM Hunter Mastery
+    double composite_target_multiplier( player_t* ) const override
+    { return composite_target_damage_vulnerability( target ); }
   };
 
   struct shadowgrasp_totem_buff_t : public buff_t
@@ -1638,17 +1659,19 @@ void shadowgrasp_totem( special_effect_t& effect )
       buff_t( effect.player, "shadowgrasp_totem", effect.player->find_spell( 331537 ) ),
       retarget_event( nullptr ), action( new shadowgrasp_totem_damage_t( effect ) )
     {
-      set_tick_callback( [this]( buff_t*, int, timespan_t ) {
+      // Periodic trigger in spell 331532 itself is hasted, which appears to control the tick rate
+      set_tick_time_behavior( buff_tick_time_behavior::HASTED );
+      set_tick_callback( [ this ]( buff_t*, int, timespan_t ) {
         action->set_target( action->parent->target );
         action->execute();
       } );
 
       item_cd = effect.player->get_cooldown( effect.cooldown_name() );
       cd_adjust = timespan_t::from_seconds(
-          -source->find_spell( 329878 )->effectN( 3 ).base_value() );
+        -source->find_spell( 329878 )->effectN( 3 ).base_value() );
 
-      range::for_each( effect.player->sim->actor_list, [this]( player_t* t ) {
-        t->register_on_demise_callback( source, [this]( player_t* actor ) {
+      range::for_each( effect.player->sim->actor_list, [ this ]( player_t* t ) {
+        t->register_on_demise_callback( source, [ this ]( player_t* actor ) {
           trigger_target_death( actor );
         } );
       } );
@@ -1672,7 +1695,7 @@ void shadowgrasp_totem( special_effect_t& effect )
 
       if ( !retarget_event && sim->shadowlands_opts.retarget_shadowgrasp_totem > 0_s )
       {
-        retarget_event = make_event( sim, sim->shadowlands_opts.retarget_shadowgrasp_totem, [this]() {
+        retarget_event = make_event( sim, sim->shadowlands_opts.retarget_shadowgrasp_totem, [ this ]() {
           retarget_event = nullptr;
 
           // Retarget parent action to emulate player "retargeting" during Shadowgrasp
@@ -1682,7 +1705,7 @@ void shadowgrasp_totem( special_effect_t& effect )
             if ( new_target )
             {
               sim->print_debug( "{} action {} retargeting to a new target: {}",
-                source->name(), action->parent->name(), new_target->name() );
+                                source->name(), action->parent->name(), new_target->name() );
               action->parent->set_target( new_target );
             }
           }

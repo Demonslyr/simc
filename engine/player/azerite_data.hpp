@@ -15,8 +15,8 @@
 
 #include "util/timespan.hpp"
 
-#include "dbc/azerite.hpp"
-
+struct azerite_power_entry_t;
+struct azerite_essence_entry_t;
 struct spell_data_t;
 struct item_t;
 struct player_t;
@@ -88,11 +88,12 @@ public:
   timespan_t time_value( size_t index = 1, time_type tt = MS ) const;
   /// Return the scaled base value as a percent (value divided by 100)
   double percent( size_t index = 1 ) const;
-  /// Return the raw budget values represented by the items for this azerite power.
-  std::vector<double> budget() const;
+  /// Return the raw budget values represented by the items for this azerite power spell effect.
+  std::vector<double> budget( size_t index ) const;
   /// Return the raw budget values represented by the items used for this power, using the given
-  /// spell as context
-  std::vector<double> budget( const spell_data_t* spell ) const;
+  /// spell effect as context
+  std::vector<double> budget( const spelleffect_data_t* effect ) const;
+  std::vector<double> budget( const spelleffect_data_t& effect ) const;
   /// List of item levels associated with this azerite power
   std::vector<unsigned> ilevels() const;
   /// Number of items worn with this azerite power
@@ -146,8 +147,7 @@ public:
   const player_t* player() const
   { return m_player; }
 
-  const char* name() const
-  { return m_essence->name; }
+  const char* name() const;
 
   unsigned rank() const
   { return m_rank; }

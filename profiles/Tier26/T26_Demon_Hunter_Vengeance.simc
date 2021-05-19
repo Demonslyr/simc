@@ -9,6 +9,7 @@ position=front
 talents=1233321
 covenant=kyrian
 soulbind=pelagos,combat_meditation/repeat_decree:7/growing_inferno:7
+renown=40
 
 # Default consumables
 potion=phantom_fire
@@ -29,8 +30,6 @@ actions.precombat+=/augmentation
 actions.precombat+=/food
 # Snapshot raid buffed stats before combat begins and pre-potting is done.
 actions.precombat+=/snapshot_stats
-actions.precombat+=/potion
-actions.precombat+=/use_item,name=azsharas_font_of_power
 
 # Executed every time the actor is available.
 actions=auto_attack

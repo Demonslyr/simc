@@ -43,7 +43,9 @@
 #include "player/soulbinds.hpp"
 #include "player/spawner_base.hpp"
 #include "player/stats.hpp"
+#include "player/player_talent_points.hpp"
 #include "player/unique_gear.hpp"
+#include "player/runeforge_data.hpp"
 #include "sim/benefit.hpp"
 #include "sim/event.hpp"
 #include "sim/proc.hpp"
@@ -53,6 +55,7 @@
 #include "sim/sc_sim.hpp"
 #include "sim/scale_factor_control.hpp"
 #include "sim/shuffled_rng.hpp"
+#include "sim/cooldown_waste_data.hpp"
 #include "util/io.hpp"
 #include "util/rng.hpp"
 #include "util/util.hpp"
@@ -1097,7 +1100,7 @@ player_t::player_t( sim_t* s, player_e t, util::string_view n, race_e r )
     cooldown_tolerance_( timespan_t::min() ),
     dbc( new dbc_t(*(s->dbc)) ),
     dbc_override( sim->dbc_override.get() ),
-    talent_points(),
+    talent_points( new player_talent_points_t()),
     profession(),
     azerite( nullptr ),
     base(),
@@ -1145,7 +1148,7 @@ player_t::player_t( sim_t* s, player_e t, util::string_view n, race_e r )
     no_action_list_provided(),
     // Reporting
     quiet( false ),
-    report_extension( new player_report_extension_t() ),
+    report_extension(),
     arise_time( timespan_t::min() ),
     iteration_fight_length(),
     iteration_waiting_time(),
@@ -1512,7 +1515,7 @@ void player_t::init_base_stats()
         }
         if ( effect.subtype() == A_MOD_MAX_MANA_PCT || effect.subtype() == A_MOD_MANA_POOL_PCT )
         {
-          resources.base[ RESOURCE_MANA ] *= 1.0 + effect.percent();
+          resources.base_multiplier[ RESOURCE_MANA ] *= 1.0 + effect.percent();
         }
       }
     }
@@ -2284,7 +2287,7 @@ void player_t::override_talent( util::string_view override_str )
         throw std::invalid_argument(fmt::format("talent_override: Invalid talent row {} in '{}'.", row, override_str ));
       }
 
-      talent_points.clear( row - 1 );
+      talent_points->clear( row - 1 );
       if ( sim->num_players == 1 )
       {
         sim->error( "talent_override: Talent row {} for {} disabled.\n", row, *this );
@@ -2313,7 +2316,7 @@ void player_t::override_talent( util::string_view override_str )
               override_str ));
         }
 
-        if ( talent_points.has_row_col( j, i ) )
+        if ( talent_points->has_row_col( j, i ) )
         {
           sim->print_debug( "talent_override: talent {} for {} is already enabled\n",
                                  override_str, *this );
@@ -2322,9 +2325,9 @@ void player_t::override_talent( util::string_view override_str )
         if ( sim->num_players == 1 )
         {  // To prevent spamming up raid reports, only do this with 1 player sims.
           sim->error( "talent_override: talent '{}' for {}s replaced talent {} in tier {}.\n", override_str,
-                       *this, talent_points.choice( j ) + 1, j + 1 );
+                       *this, talent_points->choice( j ) + 1, j + 1 );
         }
-        talent_points.select_row_col( j, i );
+        talent_points->select_row_col( j, i );
       }
     }
   }
@@ -3382,7 +3385,7 @@ double player_t::composite_melee_haste() const
     if ( buffs.mongoose_oh && buffs.mongoose_oh->check() )
       h *= 1.0 / ( 1.0 + 30 / current.rating.attack_haste );
 
-    if ( buffs.berserking->up() )
+    if ( buffs.berserking->check() )
       h *= 1.0 / ( 1.0 + buffs.berserking->data().effectN( 1 ).percent() );
 
     if ( buffs.guardian_of_azeroth->check() )
@@ -3958,6 +3961,11 @@ double player_t::composite_player_pet_damage_multiplier( const action_state_t* )
 
   m *= 1.0 + racials.command->effectN( 1 ).percent();
 
+  // By default effect 1 is used for the player modifier, effect 2 is for the pet modifier
+  if ( buffs.battlefield_presence && buffs.battlefield_presence->check() )
+    m *=
+        1.0 + ( buffs.battlefield_presence->data().effectN( 2 ).percent() * buffs.battlefield_presence->current_stack );
+
   return m;
 }
 
@@ -3991,6 +3999,9 @@ double player_t::composite_player_multiplier( school_e school ) const
 
   if ( buffs.volatile_solvent_damage && buffs.volatile_solvent_damage->has_common_school( school ) )
     m *= 1.0 + buffs.volatile_solvent_damage->check_value();
+
+  if ( buffs.battlefield_presence && buffs.battlefield_presence->check() )
+    m *= 1.0 + buffs.battlefield_presence->check_stack_value();
 
   return m;
 }
@@ -4029,6 +4040,7 @@ double player_t::composite_player_target_multiplier( player_t* target, school_e 
     m *= 1.0 + td->debuff.adversary->check_value();
     m *= 1.0 + td->debuff.plagueys_preemptive_strike->check_value();
     m *= 1.0 + td->debuff.sinful_revelation->check_value();
+    m *= 1.0 + td->debuff.dream_delver->check_stack_value();
   }
 
   return m;
@@ -4038,7 +4050,7 @@ double player_t::composite_player_heal_multiplier( const action_state_t* ) const
 {
   double m = 1.0;
 
-  if ( buffs.blessing_of_spring->up() )
+  if ( buffs.blessing_of_spring->check() )
     m *= 1.0 + buffs.blessing_of_spring->data().effectN( 1 ).percent();
 
   return m;
@@ -4228,7 +4240,7 @@ double player_t::composite_attribute_multiplier( attribute_e attr ) const
       if ( buffs.archmages_incandescence_int->check() )
         m *= 1.0 + buffs.archmages_incandescence_int->data().effectN( 1 ).percent();
       if ( sim->auras.arcane_intellect->check() )
-        m *= 1.0 + sim->auras.arcane_intellect->value();
+        m *= 1.0 + sim->auras.arcane_intellect->current_value;
       break;
     case ATTR_SPIRIT:
       pct_type = STAT_PCT_BUFF_SPIRIT;
@@ -4241,7 +4253,7 @@ double player_t::composite_attribute_multiplier( attribute_e attr ) const
       pct_type = STAT_PCT_BUFF_STAMINA;
       if ( sim->auras.power_word_fortitude->check() )
       {
-        m *= 1.0 + sim->auras.power_word_fortitude->value();
+        m *= 1.0 + sim->auras.power_word_fortitude->current_value;
       }
       break;
     default:
@@ -4641,6 +4653,7 @@ void player_t::combat_begin()
   add_timed_buff_triggers( external_buffs.blessing_of_winter, buffs.blessing_of_winter );
   add_timed_buff_triggers( external_buffs.blessing_of_spring, buffs.blessing_of_spring );
   add_timed_buff_triggers( external_buffs.conquerors_banner, buffs.conquerors_banner );
+  add_timed_buff_triggers( external_buffs.rallying_cry, buffs.rallying_cry );
 
   if ( buffs.windfury_totem )
   {
@@ -4747,6 +4760,7 @@ void player_t::datacollection_begin()
   range::for_each( proc_list, std::mem_fn( &proc_t::datacollection_begin ) );
   range::for_each( pet_list, std::mem_fn( &pet_t::datacollection_begin ) );
   range::for_each( sample_data_list, std::mem_fn( &sample_data_helper_t::datacollection_begin ) );
+  range::for_each( cooldown_waste_data_list, std::mem_fn( &cooldown_waste_data_t::datacollection_begin ) );
 }
 
 /**
@@ -4811,6 +4825,7 @@ void player_t::datacollection_end()
   range::for_each( benefit_list, std::mem_fn( &benefit_t::datacollection_end ) );
   range::for_each( proc_list, std::mem_fn( &proc_t::datacollection_end ) );
   range::for_each( sample_data_list, std::mem_fn( &sample_data_helper_t::datacollection_end ) );
+  range::for_each( cooldown_waste_data_list, std::mem_fn( &cooldown_waste_data_t::datacollection_end ) );
 }
 
 // player_t::merge ==========================================================
@@ -5059,6 +5074,15 @@ void player_t::merge( player_t& other )
           other.action_list[ i ]->action_list ? other.action_list[ i ]->action_list->name_str.c_str() : "(none)",
           other.action_list[ i ]->signature_str );
     }
+  }
+
+  // Cooldown waste data
+  for ( size_t i = 0; i < cooldown_waste_data_list.size(); i++ )
+  {
+    const auto& ours   = cooldown_waste_data_list[ i ];
+    const auto& theirs = other.cooldown_waste_data_list[ i ];
+    assert( ours->cd->name_str == theirs->cd->name_str );
+    ours->merge( *theirs );
   }
 }
 
@@ -5556,6 +5580,11 @@ void player_t::arise()
   }
 }
 
+timespan_t player_t::available() const
+{
+  return rng().gauss( 100_ms, 10_ms );
+}
+
 /**
  * Player dies.
  */
@@ -5960,6 +5989,7 @@ void player_t::recalculate_resource_max( resource_e resource_type, gain_t* sourc
   resources.max[ resource_type ] = resources.base[ resource_type ];
   resources.max[ resource_type ] *= resources.base_multiplier[ resource_type ];
   resources.max[ resource_type ] += total_gear.resource[ resource_type ];
+  resources.max[ resource_type ] += resources.temporary[ resource_type ];
 
   switch ( resource_type )
   {
@@ -5967,6 +5997,12 @@ void player_t::recalculate_resource_max( resource_e resource_type, gain_t* sourc
     {
       // Calculate & set maximum health
       resources.max[ resource_type ] += floor( stamina() ) * current.health_per_stamina;
+
+      // Redirected Anima also affects temporary bonus health
+      if ( buffs.redirected_anima && buffs.redirected_anima->up() )
+      {
+        resources.max[ resource_type ] *= 1.0 + buffs.redirected_anima->check_stack_value();
+      }
 
       // Make sure the player starts combat with full health
       if ( !in_combat )
@@ -5977,7 +6013,6 @@ void player_t::recalculate_resource_max( resource_e resource_type, gain_t* sourc
       break;
   }
 
-  resources.max[ resource_type ] += resources.temporary[ resource_type ];
   resources.max[ resource_type ] *= resources.initial_multiplier[ resource_type ];
 
   // Sanity check on current values
@@ -7194,7 +7229,7 @@ benefit_t* player_t::get_benefit( util::string_view name )
 
   if ( !u )
   {
-    u = new benefit_t( *sim, name );
+    u = new benefit_t( name );
 
     benefit_list.push_back( u );
   }
@@ -7208,7 +7243,7 @@ uptime_t* player_t::get_uptime( util::string_view name )
 
   if ( !u )
   {
-    u = new uptime_t( *sim, name );
+    u = new uptime_t( name );
 
     uptime_list.push_back( u );
   }
@@ -7256,6 +7291,18 @@ int player_t::get_action_id( util::string_view name )
 
   action_map.emplace_back( name );
   return static_cast<int>(action_map.size() - 1);
+}
+
+cooldown_waste_data_t* player_t::get_cooldown_waste_data( const cooldown_t* cd )
+{
+  for ( const auto& cdw : cooldown_waste_data_list )
+  {
+    if ( cdw->cd->name_str == cd->name_str )
+      return cdw.get();
+  }
+
+  cooldown_waste_data_list.push_back( std::make_unique<cooldown_waste_data_t>( cd ) );
+  return cooldown_waste_data_list.back().get();
 }
 
 namespace
@@ -7490,6 +7537,8 @@ struct rocket_barrage_t : public racial_spell_t
     racial_spell_t( p, "rocket_barrage", p->find_racial_spell( "Rocket Barrage" ) )
   {
     parse_options( options_str );
+    // This extra damage is hardcoded in the tooltip.
+    base_dd_min = base_dd_max = 2 * p->level();
   }
 };
 
@@ -8677,7 +8726,7 @@ struct pool_resource_t : public action_t
 
     if ( !amount_str.empty() )
     {
-      amount_expr = expr_t::parse( this, amount_str, sim->optimize_expressions );
+      amount_expr = expr_t::parse( this, amount_str, false );
       if (amount_expr == nullptr)
       {
         throw std::invalid_argument(fmt::format("Could not parse amount if expression from '{}'", amount_str));
@@ -8884,7 +8933,7 @@ action_t* player_t::create_action( util::string_view name, const std::string& op
 
 void player_t::parse_talents_numbers( util::string_view talent_string )
 {
-  talent_points.clear();
+  talent_points->clear();
 
   int i_max = std::min( static_cast<int>( talent_string.size() ), MAX_TALENT_ROWS );
 
@@ -8896,7 +8945,7 @@ void player_t::parse_talents_numbers( util::string_view talent_string )
       throw std::runtime_error(fmt::format("Illegal character '{}' in talent encoding.", c ));
     }
     if ( c > '0' )
-      talent_points.select_row_col( i, c - '1' );
+      talent_points->select_row_col( i, c - '1' );
   }
 
   create_talents_numbers();
@@ -8912,7 +8961,7 @@ pet_t* player_t::create_pet( util::string_view, util::string_view )
  */
 bool player_t::parse_talents_armory( util::string_view talent_string )
 {
-  talent_points.clear();
+  talent_points->clear();
 
   if ( talent_string.size() < 2 )
   {
@@ -9034,7 +9083,7 @@ bool player_t::parse_talents_armory( util::string_view talent_string )
       case '0':
       case '1':
       case '2':
-        talent_points.select_row_col( static_cast<int>( i ), t_str[ i ] - '0' );
+        talent_points->select_row_col( static_cast<int>( i ), t_str[ i ] - '0' );
         break;
       default:
         sim->error( "Player {} has malformed talent string '{}': talent list has invalid character '{}'.\n", name(),
@@ -9118,7 +9167,7 @@ bool player_t::parse_talents_armory2( util::string_view talent_url )
     return false;
   }
 
-  talent_points.clear();
+  talent_points->clear();
 
   auto idx_max = std::min( as<int>( split[ OFFSET_TALENTS ].size() ), MAX_TALENT_ROWS );
 
@@ -9133,7 +9182,7 @@ bool player_t::parse_talents_armory2( util::string_view talent_url )
 
     if ( c > '0' )
     {
-      talent_points.select_row_col( talent_idx, c - '1' );
+      talent_points->select_row_col( talent_idx, c - '1' );
     }
   }
 
@@ -9238,7 +9287,7 @@ void player_t::create_talents_wowhead()
     {
       for ( int col = 0; col < MAX_TALENT_COLS; ++col )
       {
-        if ( talent_points.has_row_col( ( tier * 3 ) + row, col ) )
+        if ( talent_points->has_row_col( ( tier * 3 ) + row, col ) )
         {
           encoding[ tier ] += ( col + 1 ) * multiplier;
           break;
@@ -9303,7 +9352,7 @@ void player_t::create_talents_numbers()
 
   for ( int j = 0; j < MAX_TALENT_ROWS; j++ )
   {
-    talents_str += util::to_string( talent_points.choice( j ) + 1 );
+    talents_str += util::to_string( talent_points->choice( j ) + 1 );
   }
 }
 
@@ -9360,7 +9409,7 @@ void player_t::replace_spells()
   {
     for ( int i = 0; i < MAX_TALENT_COLS; i++ )
     {
-      if ( talent_points.has_row_col( j, i ) && true_level < 20 + ( j == 0 ? -1 : j ) * 5 )
+      if ( talent_points->has_row_col( j, i ) && true_level < 20 + ( j == 0 ? -1 : j ) * 5 )
       {
         const talent_data_t* td = talent_data_t::find( type, j, i, specialization(), dbc->ptr );
         if ( td && td->replace_id() )
@@ -9466,7 +9515,7 @@ const spell_data_t* player_t::find_talent_spell( util::string_view n, specializa
         // check if we have the talent enabled or not
         // Level tiers are hardcoded here which means they will need to changed when levels change
         if ( check_validity &&
-          ( !talent_points.validate( spell, j, i ) || true_level < 20 + ( j == 0 ? -1 : j ) * 5 ) )
+          ( !talent_points->validate( spell, j, i ) || true_level < 20 + ( j == 0 ? -1 : j ) * 5 ) )
           return spell_data_t::not_found();
 
         return spell;
@@ -10788,6 +10837,11 @@ std::string player_t::create_profile( save_e stype )
       {
         profile_str += covenant->soulbind_option_str() + term;
       }
+
+      if ( covenant->renown() > 0 )
+      {
+        profile_str += "renown=" + util::to_string( covenant->renown() ) + term;
+      }
     }
   }
 
@@ -11263,9 +11317,9 @@ void player_t::create_options()
   add_option( opt_bool( "external_buffs.focus_magic", external_buffs.focus_magic ) );
 
   // Timed External Buffs
-  auto opt_external_buff_times = [ this ] ( util::string_view name, std::vector<timespan_t>& times )
+  auto opt_external_buff_times = [] ( util::string_view name, std::vector<timespan_t>& times )
   {
-    return opt_func( name, [ this, & times ] ( sim_t*, util::string_view, util::string_view val )
+    return opt_func( name, [ & times ] ( sim_t*, util::string_view, util::string_view val )
     {
       times.clear();
       auto splits = util::string_split<util::string_view>( val, "/" );
@@ -11287,6 +11341,7 @@ void player_t::create_options()
   add_option( opt_external_buff_times( "external_buffs.blessing_of_winter", external_buffs.blessing_of_winter ) );
   add_option( opt_external_buff_times( "external_buffs.blessing_of_spring", external_buffs.blessing_of_spring ) );
   add_option( opt_external_buff_times( "external_buffs.conquerors_banner", external_buffs.conquerors_banner ) );
+  add_option( opt_external_buff_times( "external_buffs.rallying_cry", external_buffs.rallying_cry ) );
 
   // Azerite options
   if ( ! is_enemy() && ! is_pet() )
@@ -11339,6 +11394,7 @@ void player_t::analyze( sim_t& s )
   range::for_each( proc_list, []( proc_t* pr ) { pr->analyze(); } );
   range::for_each( uptime_list, []( uptime_t* up ) { up->analyze(); } );
   range::for_each( benefit_list, []( benefit_t* ben ) { ben->analyze(); } );
+  range::for_each( cooldown_waste_data_list, std::mem_fn( &cooldown_waste_data_t::analyze ) );
 
   range::sort( stats_list, []( const stats_t* l, const stats_t* r ) { return l->name_str < r->name_str; } );
 
@@ -12827,7 +12883,7 @@ void player_t::acquire_target( retarget_source event, player_t* context )
   // TODO: Fancier system
   for ( auto enemy : sim->target_non_sleeping_list )
   {
-    if ( enemy->debuffs.invulnerable != nullptr && enemy->debuffs.invulnerable->up() )
+    if ( enemy->debuffs.invulnerable != nullptr && enemy->debuffs.invulnerable->check() )
     {
       if ( first_invuln_target == nullptr )
       {
@@ -12843,7 +12899,7 @@ void player_t::acquire_target( retarget_source event, player_t* context )
   // Invulnerable targets are currently not in the target_non_sleeping_list, so fall back to
   // checking if the first target has the invulnerability buff up, and use that as the fallback
   auto first_target = sim->target_list.data().front();
-  if ( !first_invuln_target && first_target->debuffs.invulnerable->up() )
+  if ( !first_invuln_target && first_target->debuffs.invulnerable->check() )
   {
     first_invuln_target = first_target;
   }
@@ -13070,4 +13126,9 @@ void player_t::init_distance_targeting()
 void format_to( const player_t& player, fmt::format_context::iterator out )
 {
   fmt::format_to( out, "Player '{}'", player.name() );
+}
+
+bool player_t::is_ptr() const
+{
+  return maybe_ptr(dbc->ptr);
 }

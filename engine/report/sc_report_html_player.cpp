@@ -10,6 +10,7 @@
 #include "reports.hpp"
 #include "report/report_helper.hpp"
 #include "report/decorators.hpp"
+#include "player/player_talent_points.hpp"
 #include "sc_highchart.hpp"
 #include "sim/scale_factor_control.hpp"
 #include "util/util.hpp"
@@ -1902,7 +1903,7 @@ void print_html_talents( report::sc_html_stream& os, const player_t& p )
             name += ")";
           }*/
         }
-        if ( p.talent_points.has_row_col( row, col ) )
+        if ( p.talent_points->has_row_col( row, col ) )
         {
           os.printf( "<td class=\"filler\">%s</td>\n", name.c_str() );
         }
@@ -3424,7 +3425,10 @@ void print_html_player_buffs( report::sc_html_stream& os, const player_t& p,
 void print_html_player_custom_section( report::sc_html_stream& os, const player_t& p,
                                        const player_processed_report_information_t& /*ri*/ )
 {
-  p.report_extension->html_customsection( os );
+  if ( p.report_extension )
+  {
+    p.report_extension->html_customsection( os );
+  }
 }
 
 // print_html_player ========================================================
@@ -3848,7 +3852,7 @@ void print_html_player_results_spec_gear( report::sc_html_stream& os, const play
       }};
       for ( uint32_t row = 0; row < MAX_TALENT_ROWS; row++ )
       {
-        const int col = p.talent_points.choice( row );
+        const int col = p.talent_points->choice( row );
         if ( col < 0 )
         {
           os.format( "<li><strong>{}</strong>:&#160;None</li>\n", row_level[ row ] );

@@ -100,6 +100,7 @@ SRC += \
     player$(PATHSEP)azerite_data.cpp \
     player$(PATHSEP)covenant.cpp \
     player$(PATHSEP)darkmoon_deck.cpp \
+    player$(PATHSEP)effect_callbacks.cpp \
     player$(PATHSEP)ground_aoe.cpp \
     player$(PATHSEP)instant_absorb.cpp \
     player$(PATHSEP)player_event.cpp \
@@ -131,6 +132,7 @@ SRC += \
     report$(PATHSEP)sc_report_html_player.cpp \
     report$(PATHSEP)sc_report_html_sim.cpp \
     report$(PATHSEP)sc_report_text.cpp \
+    sim$(PATHSEP)cooldown_waste_data.cpp \
     sim$(PATHSEP)event_manager.cpp \
     sim$(PATHSEP)proc.cpp \
     sim$(PATHSEP)real_ppm.cpp \

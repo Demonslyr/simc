@@ -7,10 +7,11 @@
 #include "heal.hpp"
 #include "action/sc_action_state.hpp"
 #include "buff/sc_buff.hpp"
-#include "dbc/dbc.hpp"
+#include "dbc/spell_data.hpp"
 #include "player/sc_player.hpp"
 #include "player/stats.hpp"
 #include "sim/sc_cooldown.hpp"
+#include "sim/sc_sim.hpp"
 #include "util/rng.hpp"
 #include <algorithm>
 

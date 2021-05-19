@@ -5,7 +5,7 @@ from collections import defaultdict
 import dbc.db, dbc.data, dbc.parser, dbc.file
 
 from dbc import constants, util
-from dbc.filter import ActiveClassSpellSet, PetActiveSpellSet, RacialSpellSet, MasterySpellSet, RankSpellSet, ConduitSet, SoulbindAbilitySet, CovenantAbilitySet, TalentSet, TemporaryEnchantItemSet
+from dbc.filter import ActiveClassSpellSet, PetActiveSpellSet, RacialSpellSet, MasterySpellSet, RankSpellSet, ConduitSet, SoulbindAbilitySet, CovenantAbilitySet, RenownRewardSet, TalentSet, TemporaryEnchantItemSet
 
 # Special hotfix field_id value to indicate an entry is new (added completely through the hotfix entry)
 HOTFIX_MAP_NEW_ENTRY  = 0xFFFFFFFF
@@ -625,7 +625,7 @@ class ItemDataGenerator(DataGenerator):
                     filter_ilevel = False
                 else:
                     # On-use item, with a valid spell (and cooldown)
-                    for item_effect in item.children('ItemEffect'):
+                    for item_effect in [c.ref('id_item_effect') for c in item.children('ItemXItemEffect')]:
                         if item_effect.trigger_type == 0 and item_effect.id_spell > 0 and (item_effect.cooldown_group_duration > 0 or item_effect.cooldown_duration > 0):
                             filter_ilevel = False
                             break
@@ -639,7 +639,7 @@ class ItemDataGenerator(DataGenerator):
             elif classdata.classs == 0:
                 # Potions, Elixirs, Flasks. Simple spells only.
                 if classdata.has_value('subclass', [1, 2, 3]):
-                    for item_effect in item.children('ItemEffect'):
+                    for item_effect in [c.ref('id_item_effect') for c in item.children('ItemXItemEffect')]:
                         spell = item_effect.ref('id_spell')
                         if not spell.has_effect('type', 6):
                             continue
@@ -651,7 +651,7 @@ class ItemDataGenerator(DataGenerator):
                         filter_ilevel = False
                 # Food
                 elif classdata.has_value('subclass', 5):
-                    for item_effect in item.children('ItemEffect'):
+                    for item_effect in [c.ref('id_item_effect') for c in item.children('ItemXItemEffect')]:
                         spell = item_effect.ref('id_spell')
                         for effect in spell._effects:
                             if not effect:
@@ -668,14 +668,15 @@ class ItemDataGenerator(DataGenerator):
                 else:
                     # Finally, check consumable whitelist
                     map_ = constants.CONSUMABLE_ITEM_WHITELIST.get(classdata.subclass, {})
-                    if item_effect.id_parent in map_:
+                    item = item_effect.child_ref('ItemXItemEffect').parent_record()
+                    if item.id in map_:
                         filter_ilevel = False
                     else:
                         continue
             # Hunter scopes and whatnot
             elif classdata.classs == 7:
                 if classdata.has_value('subclass', 3):
-                    for item_effect in item.children('ItemEffect'):
+                    for item_effect in [c.ref('id_item_effect') for c in item.children('ItemXItemEffect')]:
                         spell = item_effect.ref('id_spell')
                         for effect in spell._effects:
                             if not effect:
@@ -686,7 +687,7 @@ class ItemDataGenerator(DataGenerator):
             # Only very select quest-item permanent item enchantments
             elif classdata.classs == 12:
                 valid = False
-                for item_effect in item.children('ItemEffect'):
+                for item_effect in [c.ref('id_item_effect') for c in item.children('ItemXItemEffect')]:
                     spell = item_effect.ref('id_spell')
                     for effect in spell._effects:
                         if not effect or effect.type != 53:
@@ -941,7 +942,7 @@ class ItemDataGenerator(DataGenerator):
                     stats['socket_mul'] = float(item.field('stat_socket_mul_%d' % i)[0])
                     item_entry['stats'].append(stats)
 
-            item_effects = item.children('ItemEffect')
+            item_effects = [c.ref('id_item_effect') for c in item.children('ItemXItemEffect')]
             if len(item_effects) > 0:
                 item_entry['spells'] = list()
                 for spell in item_effects:
@@ -1246,6 +1247,12 @@ class SpellDataGenerator(DataGenerator):
          320130, 320212, # Social Butterfly vers buff (night fae/dreamweaver)
          332525, 341163, 341165, 332526, # Bron's Call to Action (kyrian/mikanikos)
          323491, 323498, 323502, 323504, 323506, # Volatile Solvent's different buff variations
+         344052, 344053, 344057, # Night Fae Stamina Passives
+         344068, 344069, 344070, # Venthyr Stamina Passives
+         344076, 344077, 344078, # Necrolord Stamina Passives
+         344087, 344089, 344091, # Kyrian Stamina Passives
+         354054, 354053, # Fatal Flaw vers/crit buffs (venthyr/nadjia)
+         351687, # Necrolord Bonesmith Heirmir Mnemonic Equipmen debuff
          # Cabalists Hymnal
          344820,
          # Empyreal Ordnance
@@ -1275,6 +1282,8 @@ class SpellDataGenerator(DataGenerator):
          336183,
          # Rotbriar Sprout
          329548,
+         # 9.1 Soulbinds
+         352881, # Bonded Hearts (night fae/niya)
         ),
 
         # Warrior:
@@ -1404,10 +1413,11 @@ class SpellDataGenerator(DataGenerator):
             ( 341541, 0 ),          # Sinister Strike third attack from Triple Threat conduit
             ( 328306, 0 ),          # Sepsis expiry direct damage hit
             ( 323660, 0 ),          # Slaughter instant damage
-            ( 323558, 0 ), ( 323559, 0 ), ( 323560, 0 ), # Echoing Reprimand buffs
+            ( 323558, 0 ), ( 323559, 0 ), ( 323560, 0 ), ( 354838, 0 ), # Echoing Reprimand buffs
             ( 324074, 0 ), ( 341277, 0 ), # Serrated Bone Spike secondary instant damage spells
             ( 328548, 0 ), ( 328549, 0 ), # Serrated Bone Spike combo point spells
             ( 340582, 0 ), ( 340583, 0 ), ( 340584, 0 ), # Guile Charm legendary buffs
+            ( 340580, 0 ),          # Guile Charm hidden buff
             ( 340600, 0 ), ( 340601, 0 ), ( 340603, 0 ), # Finality legendary buffs
             ( 341111, 0 ),          # Akaari's Soul Fragment legendary debuff
             ( 345121, 0 ),          # Akaari's Soul Fragment Shadowstrike clone
@@ -1448,6 +1458,9 @@ class SpellDataGenerator(DataGenerator):
             ( 336373, 0 ),          # Cauterizing Shadows heal spell
             ( 323707, 0 ),          # Mindgames Healing reversal Damage spell
             ( 323706, 0 ),          # Mindgames Damage reversal Healing spell
+            ( 356390, 0 ),          # Pallid Command Necrolord Legendary Power (UNCONFIRMED)
+            ( 356395, 0 ),          # Spheres' Harmony Kyrian Legendary Power (UNCONFIRMED)
+            ( 356515, 0 ),          # Bwonsamdi's Pact buff from the Legendary Power
             # Holy Priest
             ( 196809, 5 ),          # Healing Light (Divine Image legendary pet spell)
             ( 196810, 5 ),          # Dazzling Light (Divine Image legendary pet spell)
@@ -1538,6 +1551,7 @@ class SpellDataGenerator(DataGenerator):
           ( 286976, 0 ),                                # Tectonic Thunder Azerite Trait buff
           ( 327164, 0 ),                                # Primordial Wave buff
           ( 336732, 0 ), ( 336733, 0 ),                 # Legendary: Elemental Equilibrium school buffs
+	  ( 336737, 0 ),                                # Runeforged Legendary: Chains of Devastation
         ),
 
         # Mage:
@@ -1691,24 +1705,6 @@ class SpellDataGenerator(DataGenerator):
 		  ( 290461, 3 ), # Reverse Harm Damage
 		  ( 335913, 3 ), # Empowered Tiger Lightning Damage spell
 
-          # Azerite Traits
-          ( 278710, 3 ), # Swift Roundhouse
-          ( 278767, 1 ), # Training of Niuzao buff
-          ( 285958, 1 ), # Straight, No Chaser trait
-          ( 285959, 1 ), # Straight, No Chaser buff
-          ( 286585, 3 ), # Dance of Chi-Ji trait
-          ( 286586, 3 ), # Dance of Chi-Ji RPPM
-          ( 286587, 3 ), # Dance of Chi-Ji buff
-          ( 287055, 3 ), # Fury of Xuen trait
-          ( 287062, 3 ), # Fury of Xuen buff
-          ( 287063, 3 ), # Fury of Xuen proc
-          ( 287831, 2 ), # Secret Infusion Crit Buff
-          ( 287835, 2 ), # Secret Infusion Haste Buff
-          ( 287836, 2 ), # Secret Infusion Mastery Buff
-          ( 287837, 2 ), # Secret Infusion Versatility Buff
-          ( 288634, 3 ), # Glory of the Dawn trait
-          ( 288636, 3 ), # Glory of the Dawn proc
-
           # Covenant
           ( 325217, 0 ), # Necrolord Bonedust Brew damage
           ( 325218, 0 ), # Necrolord Bonedust Brew heal
@@ -1737,14 +1733,18 @@ class SpellDataGenerator(DataGenerator):
 
           # Shadowland Legendaries
           ( 337342, 3 ), # Jade Ignition Damage
-          ( 337482, 3 ), # Pressure Point BUff
+          ( 337482, 3 ), # Pressure Point Buff
           ( 338141, 1 ), # Flaming Kicks Legendary damage
           ( 343249, 0 ), # Escape from Reality Buff
           ( 343250, 0 ), # Escape from Reality
           ( 343539, 0 ), # Escape from Reality Mana Refund
           ( 343543, 0 ), # Escape from Reality Energy Refund
+          ( 344021, 3 ), # Keefer's Skyreach Debuff
+          ( 337341, 3 ), # Keefer's Skyreach Exhaustion Debuff
           ( 347687, 1 ), # Charred Passions
           ( 347688, 1 ), # Charred Passions
+          ( 356773, 0 ), # Fae Exposure Damage Debuff
+          ( 356774, 0 ), # Fae Exposure Heal Buff
         ),
 
         # Druid:
@@ -1799,6 +1799,8 @@ class SpellDataGenerator(DataGenerator):
           ( 339800, 1 ),       # Oneth's Perception (free starfall)
           ( 345048, 3 ),       # Ursoc's Fury Remembered absorb buff
           ( 340060, 0 ),       # Lycara's Fleeting Glimpse coming soon buff
+          # 9.1 Legendary
+          ( 354805, 0 ), ( 354802, 0 ), ( 354815, 0 ), ( 354345, 0 ), # Kindred Affinity (kyrian)
 
           # Shadowlands Covenant
           ( 326446, 0, True ), # Kyrian Empower Bond on DPS
@@ -1833,9 +1835,8 @@ class SpellDataGenerator(DataGenerator):
           ( 275148, 1 ), # Unbound Chaos Azerite damage spell
           ( 337313, 1 ), # Inner Demon aura for Unbound Chaos talent
           ( 275147, 1 ), # Unbound Chaos delayed trigger aura
-          ( 333105, 1 ), # Sigil of the Illidari Legendary fake Fel Eruption aura
-          ( 333110, 1 ), # Sigil of the Illidari Legendary fake Fel Eruption damage trigger
-          ( 333120, 1 ), # Sigil of the Illidari Legendary fake Fel Eruption heal
+          ( 333105, 1 ), ( 333110, 1 ), # Sigil of the Illidari Legendary fake Fel Devastation spells
+          ( 346502, 1 ), ( 346503, 1 ), # New Sigil of the Illidari Legendary fake Fel Devastation spells
           ( 337567, 1 ), # Chaotic Blades legendary buff
 
           # Vengeance
@@ -1844,8 +1845,8 @@ class SpellDataGenerator(DataGenerator):
           ( 213011, 2 ), # Charred Warblades heal
           ( 212818, 2 ), # Fiery Demise debuff
           ( 207760, 2 ), # Burning Alive spread radius
-          ( 333386, 2 ), # Sigil of the Illidari Legendary fake Eye Beam aura
-          ( 333389, 2 ), # Sigil of the Illidari Legendary fake Eye Beam damage trigger
+          ( 333386, 2 ), ( 333389, 2 ), # Sigil of the Illidari Legendary fake Eye Beam spells
+          ( 346504, 2 ), ( 346505, 2 ), # New Sigil of the Illidari Legendary fake Eye Beam spells
        ),
     ]
 
@@ -2369,7 +2370,7 @@ class SpellDataGenerator(DataGenerator):
                     if not item.id or item.gem_props == 0:
                         continue
 
-                    for item_effect in item.children('ItemEffect'):
+                    for item_effect in [c.ref('id_item_effect') for c in item.children('ItemXItemEffect')]:
                         enchant_spell = item_effect.ref('id_spell')
                         for enchant_effect in enchant_spell._effects:
                             if not enchant_effect or (enchant_effect.type != 53 and enchant_effect.type != 6):
@@ -2417,7 +2418,7 @@ class SpellDataGenerator(DataGenerator):
             # Grab relevant spells from quest items, this in essence only
             # includes certain permanent enchants
             if class_ == 12:
-                for item_effect in item.children('ItemEffect'):
+                for item_effect in [c.ref('id_item_effect') for c in item.children('ItemXItemEffect')]:
                     spell = item_effect.ref('id_spell')
                     for effect in spell._effects:
                         if not effect or effect.type != 53:
@@ -2426,7 +2427,7 @@ class SpellDataGenerator(DataGenerator):
                         self.process_spell(spell.id, ids, 0, 0)
             # Grab relevant spells from consumables as well
             elif class_ == 0:
-                for item_effect in item.children('ItemEffect'):
+                for item_effect in [c.ref('id_item_effect') for c in item.children('ItemXItemEffect')]:
                     spell = item_effect.ref('id_spell')
                     if not spell.id:
                         continue
@@ -2445,13 +2446,14 @@ class SpellDataGenerator(DataGenerator):
 
                     # Finally, check consumable whitelist
                     map_ = constants.CONSUMABLE_ITEM_WHITELIST.get(classdata.subclass, {})
-                    if item_effect.id_parent in map_:
+                    item = item_effect.child_ref('ItemXItemEffect').parent_record()
+                    if item.id in map_:
                         self.process_spell(spell.id, ids, 0, 0)
 
             # Hunter scopes and whatnot
             elif class_ == 7:
                 if classdata.has_value('subclass', 3):
-                    for item_effect in item.children('ItemEffect'):
+                    for item_effect in [c.ref('id_item_effect') for c in item.children('ItemXItemEffect')]:
                         spell = item_effect.ref('id_spell')
                         for effect in spell._effects:
                             if not effect:
@@ -2505,7 +2507,7 @@ class SpellDataGenerator(DataGenerator):
                (ilevel < self._options.min_ilevel or ilevel > self._options.max_ilevel):
                 continue
 
-            for item_effect in item.children('ItemEffect'):
+            for item_effect in [c.ref('id_item_effect') for c in item.children('ItemXItemEffect')]:
                 spell = item_effect.ref('id_spell')
                 if spell.id == 0:
                     continue
@@ -2565,6 +2567,10 @@ class SpellDataGenerator(DataGenerator):
 
         # Souldbind conduits
         for spell_id in ConduitSet(self._options).ids():
+            self.process_spell(spell_id, ids, 0, 0)
+
+        # Renown rewards
+        for spell_id in RenownRewardSet(self._options).ids():
             self.process_spell(spell_id, ids, 0, 0)
 
         # Explicitly add Shadowlands legendaries
@@ -2690,6 +2696,9 @@ class SpellDataGenerator(DataGenerator):
         index = 0
         for id in id_keys:
             spell = self.db('SpellName')[id]
+
+            # Unused hotfix IDs: 7,
+            # MAX hotfix id: 39
             hotfix = HotfixDataRecord()
             power_count = 0
 
@@ -2718,10 +2727,9 @@ class SpellDataGenerator(DataGenerator):
             fields += [ u'%#.16x' % ids.get(id, { 'mask_class' : 0, 'mask_race': 0 })['mask_race'] ]
             fields += [ u'%#.8x' % ids.get(id, { 'mask_class' : 0, 'mask_race': 0 })['mask_class'] ]
 
-            # Set the scaling index for the spell
             scaling_entry = spell.get_link('scaling')
-            fields += scaling_entry.field('id_class', 'max_scaling_level')
-            hotfix.add(scaling_entry, ('id_class', 7), ('max_scaling_level', 8))
+            fields += scaling_entry.field('max_scaling_level')
+            hotfix.add(scaling_entry, ('max_scaling_level', 8))
 
             level_entry = spell.get_link('level')
 
@@ -2866,12 +2874,27 @@ class SpellDataGenerator(DataGenerator):
             #if index % 20 == 0:
             #    self._out.write('//{     Id,Flags,   SpId,Idx, EffectType                  , EffectSubType                              ,       Coefficient,         Delta,       Unknown,   Coefficient, APCoefficient,  Ampl,  Radius,  RadMax,   BaseV,   MiscV,  MiscV2, {     Flags1,     Flags2,     Flags3,     Flags4 }, Trigg,   DmgMul,  CboP, RealP,Die,Mech,ChTrg,0, 0 },\n')
 
+            # MAX hotfix id 28
             hotfix = HotfixDataRecord()
 
-            fields = effect.field('id', 'id_parent', 'index', 'type', 'sub_type', 'coefficient', 'delta',
-                                  'bonus', 'sp_coefficient', 'ap_coefficient', 'amplitude')
-            hotfix.add(effect, ('index', 3), ('type', 4), ('sub_type', 5), ('coefficient', 6), ('delta', 7),
-                               ('bonus', 8), ('sp_coefficient', 9), ('ap_coefficient', 10), ('amplitude', 11))
+            fields = effect.field('id', 'id_parent', 'index', 'type', 'sub_type')
+            hotfix.add(effect, ('index', 3), ('type', 4), ('sub_type', 5))
+
+            # Effect scaling changes in 9.1.0 to be effect specific, change Simulationcraft to
+            # support "both worlds" (<9.1.0, >=9.1.0) by adjusting how data is
+            # generated for the former.
+            if self._options.build >= dbc.WowVersion(9, 1, 0, 0):
+                fields += effect.field('id_scaling_class')
+                hotfix.add(effect, ('id_scaling_class', 28))
+            else:
+                fields += effect.parent_record().child_ref('SpellScaling').field('id_class')
+                hotfix.add(effect.parent_record().child_ref('SpellScaling'),
+                        ('id_class', 28))
+
+            fields += effect.field('coefficient', 'delta', 'bonus', 'sp_coefficient',
+                    'ap_coefficient', 'amplitude')
+            hotfix.add(effect, ('coefficient', 6), ('delta', 7), ('bonus', 8),
+                    ('sp_coefficient', 9), ('ap_coefficient', 10), ('amplitude', 11))
 
             radius_entry = effect.ref('id_radius_1')
             fields += radius_entry.field('radius_1')
@@ -3773,7 +3796,7 @@ class ItemEffectGenerator(ItemDataGenerator):
 
         # exported items effects
         for item in super().filter():
-            ids.extend(item.children('ItemEffect'))
+            ids.extend([c.ref('id_item_effect') for c in item.children('ItemXItemEffect')])
 
         return list(set(ids))
 
@@ -3786,11 +3809,13 @@ class ItemEffectGenerator(ItemDataGenerator):
                 array = 'item_effect',
                 length = len(data))
 
-        for index, entry in enumerate(sorted(data, key = lambda e: (e.id_parent, e.index, e.id))):
+        for index, entry in enumerate(sorted(data, key = lambda e: (e.child_ref('ItemXItemEffect').parent_record().id, e.index, e.id))):
             item_effect_id_index.append((entry.id, index))
+            item = entry.child_ref('ItemXItemEffect').parent_record()
 
-            fields = entry.field( 'id', 'id_spell', 'id_parent', 'index', 'trigger_type',
-                    'cooldown_group', 'cooldown_duration', 'cooldown_group_duration' )
+            fields = entry.field('id', 'id_spell')
+            fields += item.field('id')
+            fields += entry.field('index', 'trigger_type', 'cooldown_group', 'cooldown_duration', 'cooldown_group_duration')
 
             self.output_record(fields, comment = entry.ref('id_spell').name)
 
@@ -4062,6 +4087,27 @@ class CovenantAbilityGenerator(DataGenerator):
             fields += entry.ref('id_spell').field('id', 'name')
 
             self.output_record(fields)
+
+        self.output_footer()
+
+class RenownRewardGenerator(DataGenerator):
+    def filter(self):
+        return RenownRewardSet(self._options).get()
+
+    def generate(self, data=None):
+        data.sort(key = lambda v: (v.id_covenant, v.level, v.id_spell))
+
+        self.output_header(
+                header = 'Renown reward abilities',
+                type = 'renown_reward_entry_t',
+                array = 'renown_reward_ability',
+                length = len(data))
+
+        for entry in data:
+            fields = entry.field('id_covenant', 'level')
+            fields += entry.ref('id_spell').field('id', 'name')
+
+            self.output_record(fields, comment = entry.ref('id_covenant').name)
 
         self.output_footer()
 

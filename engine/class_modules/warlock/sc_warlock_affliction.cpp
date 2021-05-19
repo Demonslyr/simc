@@ -145,13 +145,11 @@ struct shadow_bolt_t : public affliction_spell_t
 struct agony_t : public affliction_spell_t
 {
   double chance;
-  bool pandemic_invocation_usable;  // BFA - Azerite
 
   agony_t( warlock_t* p, util::string_view options_str ) : affliction_spell_t( "Agony", p, p->spec.agony )
   {
     parse_options( options_str );
     may_crit                   = false;
-    pandemic_invocation_usable = false;  // BFA - Azerite
 
     dot_max_stack = as<int>( data().max_stacks() + p->spec.agony_2->effectN( 1 ).base_value() );
     dot_duration += p->conduit.rolling_agony.time_value();
@@ -179,22 +177,8 @@ struct agony_t : public affliction_spell_t
 
   void execute() override
   {
-    // BFA - Azerite
-    // Do checks for Pandemic Invocation before parent execute() is called so we get the correct DoT states.
-    if ( p()->azerite.pandemic_invocation.ok() && td( target )->dots_agony->is_ticking() &&
-         td( target )->dots_agony->remains() <= p()->azerite.pandemic_invocation.spell_ref().effectN( 2 ).time_value() )
-      pandemic_invocation_usable = true;
-
     affliction_spell_t::execute();
 
-    if ( pandemic_invocation_usable )
-    {
-      p()->active.pandemic_invocation->schedule_execute();
-      pandemic_invocation_usable = false;
-    }
-
-    //There is TECHNICALLY a prepatch bug on PTR (as of 9/23) where having both the talent and the azerite starts at 3 stacks
-    //Making a note of it here in this comment but not going to implement it at this time
     if ( p()->talents.writhe_in_agony->ok() && td( execute_state->target )->dots_agony->current_stack() <
       (int)p()->talents.writhe_in_agony->effectN( 3 ).base_value() )
     {
@@ -202,22 +186,6 @@ struct agony_t : public affliction_spell_t
         ->dots_agony->increment( (int)p()->talents.writhe_in_agony->effectN( 3 ).base_value() -
           td( execute_state->target )->dots_agony->current_stack() );
     }
-    else if ( p()->azerite.sudden_onset.ok() && td( execute_state->target )->dots_agony->current_stack() <
-                                               (int)p()->azerite.sudden_onset.spell_ref().effectN( 2 ).base_value() )
-    {
-      td( execute_state->target )
-          ->dots_agony->increment( (int)p()->azerite.sudden_onset.spell_ref().effectN( 2 ).base_value() -
-                                   td( execute_state->target )->dots_agony->current_stack() );
-    }
-  }
-
-  double bonus_ta( const action_state_t* s ) const override
-  {
-    double ta = affliction_spell_t::bonus_ta( s );
-    // BFA - Azerite
-    // TOCHECK: How does Sudden Onset behave with Writhe in Agony's increased stack cap?
-    ta += p()->azerite.sudden_onset.value();
-    return ta;
   }
 
   void tick( dot_t* d ) override
@@ -246,20 +214,6 @@ struct agony_t : public affliction_spell_t
 
     if ( p()->agony_accumulator >= 1 )
     {
-      // BFA - Azerite
-      if ( p()->azerite.wracking_brilliance.ok() )
-      {
-        if ( p()->wracking_brilliance )
-        {
-          p()->wracking_brilliance = false;
-          p()->buffs.wracking_brilliance->trigger();
-        }
-        else
-        {
-          p()->wracking_brilliance = true;
-        }
-      }
-
       p()->resource_gain( RESOURCE_SOUL_SHARD, 1.0, p()->gains.agony );
       p()->agony_accumulator -= 1.0;
     }
@@ -267,11 +221,6 @@ struct agony_t : public affliction_spell_t
     if ( result_is_hit( d->state->result ) && p()->talents.inevitable_demise->ok() && !p()->buffs.drain_life->check() )
     {
       p()->buffs.inevitable_demise->trigger();
-    }
-
-    if ( result_is_hit( d->state->result ) && p()->azerite.inevitable_demise.ok() && !p()->buffs.drain_life->check() )
-    {
-      p()->buffs.id_azerite->trigger();
     }
 
     p()->malignancy_reduction_helper();
@@ -282,8 +231,6 @@ struct agony_t : public affliction_spell_t
 
 struct corruption_t : public affliction_spell_t
 {
-  bool pandemic_invocation_usable;
-
   corruption_t( warlock_t* p, util::string_view options_str, bool seed_action )
     : affliction_spell_t( "corruption", p, p->find_spell( 172 ) )   // 172 triggers 146739
   {
@@ -291,8 +238,6 @@ struct corruption_t : public affliction_spell_t
     parse_options( options_str );
     may_crit                   = false;
     tick_zero                  = false;
-    pandemic_invocation_usable = false;  // BFA - Azerite
-
 
     if ( !p->spec.corruption_3->ok() || seed_action )
     {
@@ -353,26 +298,6 @@ struct corruption_t : public affliction_spell_t
     affliction_spell_t::tick( d );
   }
 
-  void execute() override
-  {
-    // BFA - Azerite
-    // Do checks for Pandemic Invocation before parent execute() is called so we get the correct DoT states.
-    if ( p()->azerite.pandemic_invocation.ok() && td( target )->dots_corruption->is_ticking() &&
-         td( target )->dots_corruption->remains() <=
-             p()->azerite.pandemic_invocation.spell_ref().effectN( 2 ).time_value() )
-      pandemic_invocation_usable = true;
-
-    affliction_spell_t::execute();
-
-    if ( pandemic_invocation_usable )
-    {
-      p()->active.pandemic_invocation->schedule_execute();
-      pandemic_invocation_usable = false;
-    }
-
-
-  }
-
   double composite_ta_multiplier(const action_state_t* s) const override
   {
     double m = affliction_spell_t::composite_ta_multiplier( s );
@@ -404,18 +329,10 @@ struct unstable_affliction_t : public affliction_spell_t
     {
       td( p()->ua_target )->dots_unstable_affliction->cancel();
     }
-    else if ( p()->ua_target && td( p()->ua_target )->dots_unstable_affliction->is_ticking() &&
-      p()->azerite.cascading_calamity.ok() )
-    {
-      p()->buffs.cascading_calamity->trigger();
-    }
 
     p()->ua_target = target;
 
     affliction_spell_t::execute();
-
-    if ( p()->azerite.dreadful_calling.ok() )
-      p()->cooldowns.darkglare->adjust( (-1 * p()->azerite.dreadful_calling.spell_ref().effectN( 1 ).time_value() ) );
   }
 
   void last_tick( dot_t* d) override
@@ -431,13 +348,6 @@ struct unstable_affliction_t : public affliction_spell_t
 
     affliction_spell_t::tick( d );
   }
-
-  double bonus_ta( const action_state_t* s ) const override
-  {
-    double ta = affliction_spell_t::bonus_ta( s );
-    ta += p()->azerite.dreadful_calling.value( 2 );
-    return ta;
-  }
 };
 
 struct summon_darkglare_t : public affliction_spell_t
@@ -449,9 +359,6 @@ struct summon_darkglare_t : public affliction_spell_t
     harmful = may_crit = may_miss = false;
 
     cooldown->duration += timespan_t::from_millis( p->talents.dark_caller->effectN( 1 ).base_value() );
-
-    //PTR for prepatch presumably does additive CDR, then multiplicative
-    cooldown->duration *= 1.0 + azerite::vision_of_perfection_cdr( p->azerite_essence.vision_of_perfection );
   }
 
   void execute() override
@@ -484,7 +391,6 @@ struct seed_of_corruption_t : public affliction_spell_t
     {
       aoe                              = -1;
       background                       = true;
-      p->spells.seed_of_corruption_aoe = this;
       base_costs[ RESOURCE_MANA ]      = 0;
 
       corruption->background                  = true;
@@ -602,8 +508,6 @@ struct malefic_rapture_t : public affliction_spell_t
         background = true;
         spell_power_mod.direct = spc;
         callbacks = false; //TOCHECK: Malefic Rapture did not proc Psyche Shredder, it may not cause any procs at all
-
-        p->spells.malefic_rapture_aoe = this;
       }
 
       double get_dots_ticking(player_t *target) const
@@ -765,32 +669,11 @@ struct haunt_t : public affliction_spell_t
 
 struct siphon_life_t : public affliction_spell_t
 {
-  bool pandemic_invocation_usable;
-
   siphon_life_t( warlock_t* p, util::string_view options_str )
     : affliction_spell_t( "siphon_life", p, p->talents.siphon_life )
   {
     parse_options( options_str );
     may_crit                   = false;
-    pandemic_invocation_usable = false;  // BFA - Azerite
-  }
-
-  void execute() override
-  {
-    // BFA - Azerite
-    // Do checks for Pandemic Invocation before parent execute() is called so we get the correct DoT states.
-    if ( p()->azerite.pandemic_invocation.ok() && td( target )->dots_siphon_life->is_ticking() &&
-         td( target )->dots_siphon_life->remains() <=
-             p()->azerite.pandemic_invocation.spell_ref().effectN( 2 ).time_value() )
-      pandemic_invocation_usable = true;
-
-    affliction_spell_t::execute();
-
-    if ( pandemic_invocation_usable )
-    {
-      p()->active.pandemic_invocation->schedule_execute();
-      pandemic_invocation_usable = false;
-    }
   }
 };
 
@@ -841,26 +724,6 @@ struct vile_taint_t : public affliction_spell_t
 
     hasted_ticks = tick_zero = true;
     aoe                      = -1;
-  }
-};
-
-// BFA - Azerite
-// TOCHECK: Does this damage proc affect Seed of Corruption?
-struct pandemic_invocation_t : public affliction_spell_t
-{
-  pandemic_invocation_t( warlock_t* p ) : affliction_spell_t( "Pandemic Invocation", p, p->find_spell( 289367 ) )
-  {
-    background = true;
-
-    base_dd_min = base_dd_max = p->azerite.pandemic_invocation.value();
-  }
-
-  void execute() override
-  {
-    affliction_spell_t::execute();
-
-    if ( p()->rng().roll( p()->azerite.pandemic_invocation.spell_ref().effectN( 3 ).percent() / 100.0 ) )
-      p()->resource_gain( RESOURCE_SOUL_SHARD, 1.0, p()->gains.pandemic_invocation );
   }
 };
 
@@ -936,38 +799,10 @@ void warlock_t::create_buffs_affliction()
   buffs.nightfall = make_buff( this, "nightfall", find_spell( 264571 ) )
                         ->set_default_value( find_spell( 264571 )->effectN( 2 ).percent() )
                         ->set_trigger_spell( talents.nightfall );
-  buffs.inevitable_demise = make_buff( this, "inevitable_demise", talents.inevitable_demise )
-                                ->set_max_stack( find_spell( 334320 )->max_stacks() )
+  buffs.inevitable_demise = make_buff( this, "inevitable_demise", find_spell( 334320 ) )
                                 ->set_default_value( talents.inevitable_demise->effectN( 1 ).percent() );
-  // BFA - Azerite
-  buffs.id_azerite = make_buff(this, "inevitable_demise_az", azerite.inevitable_demise)
-                         ->set_max_stack(find_spell(273525)->max_stacks())
-                         // Inevitable Demise has a built in 25% reduction to the value of ranks 2 and 3. This is applied as a flat multiplier to the total value.
-                         ->set_default_value(azerite.inevitable_demise.value() * ((1.0 + 0.75 * (azerite.inevitable_demise.n_items() - 1)) / azerite.inevitable_demise.n_items()));
 
-  buffs.cascading_calamity = make_buff<stat_buff_t>( this, "cascading_calamity", azerite.cascading_calamity )
-                                 ->add_stat( STAT_HASTE_RATING, azerite.cascading_calamity.value() )
-                                 ->set_duration( find_spell( 275378 )->duration() )
-                                 ->set_refresh_behavior( buff_refresh_behavior::DURATION );
-  buffs.wracking_brilliance = make_buff<stat_buff_t>( this, "wracking_brilliance", azerite.wracking_brilliance )
-                                  ->add_stat( STAT_INTELLECT, azerite.wracking_brilliance.value() )
-                                  ->set_duration( find_spell( 272893 )->duration() )
-                                  ->set_refresh_behavior( buff_refresh_behavior::DURATION );
   buffs.malefic_wrath = make_buff( this, "malefic_wrath", find_spell( 337125 ) )->set_default_value_from_effect( 1 );
-}
-
-void warlock_t::vision_of_perfection_proc_aff()
-{
-  timespan_t summon_duration = spec.summon_darkglare->duration() * vision_of_perfection_multiplier;
-
-  warlock_pet_list.vop_darkglares.spawn( summon_duration, 1U );
-
-  auto vop = find_azerite_essence( "Vision of Perfection" );
-
-  timespan_t darkglare_extension =
-      timespan_t::from_seconds( vop.spell_ref( vop.rank(), essence_type::MAJOR ).effectN( 3 ).base_value() / 1000 );
-
-  darkglare_extension_helper( this, darkglare_extension );
 }
 
 void warlock_t::init_spells_affliction()
@@ -986,7 +821,6 @@ void warlock_t::init_spells_affliction()
   spec.corruption_3        = find_specialization_spell( "Corruption", "Rank 3" );
   spec.unstable_affliction_2 = find_specialization_spell( "Unstable Affliction", "Rank 2" );
   spec.unstable_affliction_3 = find_specialization_spell( "Unstable Affliction", "Rank 3" );
-  spec.shadow_bolt            = find_specialization_spell( "Shadow Bolt" );
 
   // Talents
   talents.nightfall           = find_talent_spell( "Nightfall" );
@@ -1003,14 +837,6 @@ void warlock_t::init_spells_affliction()
   talents.creeping_death      = find_talent_spell( "Creeping Death" );
   talents.dark_soul_misery    = find_talent_spell( "Dark Soul: Misery" );
 
-  // BFA - Azerite
-  azerite.cascading_calamity  = find_azerite_spell( "Cascading Calamity" );
-  azerite.dreadful_calling    = find_azerite_spell( "Dreadful Calling" );
-  azerite.inevitable_demise   = find_azerite_spell( "Inevitable Demise" );
-  azerite.sudden_onset        = find_azerite_spell( "Sudden Onset" );
-  azerite.wracking_brilliance = find_azerite_spell( "Wracking Brilliance" );
-  azerite.pandemic_invocation = find_azerite_spell( "Pandemic Invocation" );
-
   // Legendaries
   legendary.malefic_wrath              = find_runeforge_legendary( "Malefic Wrath" );
   legendary.perpetual_agony_of_azjaqir = find_runeforge_legendary( "Perpetual Agony of Azj'Aqir" );
@@ -1021,19 +847,13 @@ void warlock_t::init_spells_affliction()
   conduit.corrupting_leer    = find_conduit_spell( "Corrupting Leer" );
   conduit.focused_malignancy = find_conduit_spell( "Focused Malignancy" );
   conduit.rolling_agony      = find_conduit_spell( "Rolling Agony" );
-
-  // Actives
-  active.pandemic_invocation = new pandemic_invocation_t( this );
 }
 
 void warlock_t::init_gains_affliction()
 {
   gains.agony                      = get_gain( "agony" );
-  gains.seed_of_corruption         = get_gain( "seed_of_corruption" );
   gains.unstable_affliction_refund = get_gain( "unstable_affliction_refund" );
   gains.drain_soul                 = get_gain( "drain_soul" );
-  // BFA - Azerite
-  gains.pandemic_invocation = get_gain( "pandemic_invocation" );
 }
 
 void warlock_t::init_rng_affliction()
@@ -1047,6 +867,10 @@ void warlock_t::init_procs_affliction()
   procs.malefic_wrath   = get_proc( "malefic_wrath" );
 }
 
+void warlock_t::create_options_affliction()
+{
+}
+
 void warlock_t::create_apl_affliction()
 {
   action_priority_list_t* def   = get_action_priority_list( "default" );
@@ -1055,70 +879,90 @@ void warlock_t::create_apl_affliction()
   action_priority_list_t* aoe   = get_action_priority_list( "aoe" );
   action_priority_list_t* cov   = get_action_priority_list( "covenant" );
   action_priority_list_t* item  = get_action_priority_list( "item" );
+  action_priority_list_t* dot   = get_action_priority_list( "dot_prep" );
+  action_priority_list_t* delay = get_action_priority_list( "delayed_trinkets" );
+  action_priority_list_t* stat  = get_action_priority_list( "stat_trinkets" );
+  action_priority_list_t* dmg   = get_action_priority_list( "damage_trinkets" );
+  action_priority_list_t* split = get_action_priority_list( "trinket_split_check" );
 
   def->add_action( "call_action_list,name=aoe,if=active_enemies>3" );
-  def->add_action( "phantom_singularity,if=time>30" );
 
-  def->add_action( "call_action_list,name=darkglare_prep,if=covenant.venthyr&dot.impending_catastrophe_dot.ticking&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity.enabled)" );
-  def->add_action( "call_action_list,name=darkglare_prep,if=covenant.night_fae&dot.soul_rot.ticking&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity.enabled)" );
-  def->add_action( "call_action_list,name=darkglare_prep,if=(covenant.necrolord|covenant.kyrian|covenant.none)&dot.phantom_singularity.ticking&dot.phantom_singularity.remains<2" );
+  def->add_action( "call_action_list,name=trinket_split_check,if=time<1", "Action lists for trinket behavior. Stats are saved for before Soul Rot/Impending Catastrophe/Phantom Singularity, otherwise on cooldown" );
+  def->add_action( "call_action_list,name=delayed_trinkets" );
+  def->add_action( "call_action_list,name=stat_trinkets,if=(dot.soul_rot.ticking|dot.impending_catastrophe_dot.ticking|dot.phantom_singularity.ticking)&soul_shard>3|dot.vile_taint.ticking|talent.sow_the_seeds" );
+  def->add_action( "call_action_list,name=damage_trinkets,if=covenant.night_fae&(!variable.trinket_split|cooldown.soul_rot.remains>20|(variable.trinket_one&cooldown.soul_rot.remains<trinket.1.cooldown.remains)|(variable.trinket_two&cooldown.soul_rot.remains<trinket.2.cooldown.remains))" );
+  def->add_action( "call_action_list,name=damage_trinkets,if=covenant.venthyr&(!variable.trinket_split|cooldown.impending_catastrophe.remains>20|(variable.trinket_one&cooldown.impending_catastrophe.remains<trinket.1.cooldown.remains)|(variable.trinket_two&cooldown.impending_catastrophe.remains<trinket.2.cooldown.remains))" );
+  def->add_action( "call_action_list,name=damage_trinkets,if=(covenant.necrolord|covenant.kyrian|covenant.none)&(!variable.trinket_split|cooldown.phantom_singularity.remains>20|(variable.trinket_one&cooldown.phantom_singularity.remains<trinket.1.cooldown.remains)|(variable.trinket_two&cooldown.phantom_singularity.remains<trinket.2.cooldown.remains))" );
+  def->add_action( "call_action_list,name=damage_trinkets,if=!talent.phantom_singularity.enabled&(!variable.trinket_split|cooldown.summon_darkglare.remains>20|(variable.trinket_one&cooldown.summon_darkglare.remains<trinket.1.cooldown.remains)|(variable.trinket_two&cooldown.summon_darkglare.remains<trinket.2.cooldown.remains))" );
 
-  def->add_action( "agony,if=dot.agony.remains<4" );
-  def->add_action( "agony,cycle_targets=1,if=active_enemies>1,target_if=dot.agony.remains<4" );
+  def->add_action( "malefic_rapture,if=time_to_die<execute_time*soul_shard&dot.unstable_affliction.ticking", "Burn soul shards if fight is almost over" );
+
+  def->add_action( "call_action_list,name=darkglare_prep,if=covenant.venthyr&dot.impending_catastrophe_dot.ticking&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity)", "If covenant dot/Phantom Singularity is running, use Darkglare to extend the current set" );
+  def->add_action( "call_action_list,name=darkglare_prep,if=covenant.night_fae&dot.soul_rot.ticking&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity)" );
+
+  def->add_action( "call_action_list,name=darkglare_prep,if=(covenant.necrolord|covenant.kyrian|covenant.none)&dot.phantom_singularity.ticking&dot.phantom_singularity.remains<2", "If using Phantom Singularity on cooldown, make sure to extend it before it runs out" );
+
+  def->add_action( "call_action_list,name=dot_prep,if=covenant.night_fae&!dot.soul_rot.ticking&cooldown.soul_rot.remains<4", "Refresh dots early if going into a shard spending phase" );
+  def->add_action( "call_action_list,name=dot_prep,if=covenant.venthyr&!dot.impending_catastrophe_dot.ticking&cooldown.impending_catastrophe.remains<4" );
+  def->add_action( "call_action_list,name=dot_prep,if=(covenant.necrolord|covenant.kyrian|covenant.none)&talent.phantom_singularity&!dot.phantom_singularity.ticking&cooldown.phantom_singularity.remains<4" );
+
+  def->add_action( "dark_soul,if=dot.phantom_singularity.ticking", "If Phantom Singularity is ticking, it is safe to use Dark Soul" );
+  def->add_action( "dark_soul,if=!talent.phantom_singularity&(dot.soul_rot.ticking|dot.impending_catastrophe_dot.ticking)" );
+
+  def->add_action( "phantom_singularity,if=covenant.night_fae&time>5&cooldown.soul_rot.remains<1&(trinket.empyreal_ordnance.cooldown.remains<162|!equipped.empyreal_ordnance)", "Sync Phantom Singularity with Venthyr/Night Fae covenant dot, otherwise use on cooldown. If Empyreal Ordnance buff is incoming, hold until it's ready (18 seconds after use)" );
+  def->add_action( "phantom_singularity,if=covenant.venthyr&time>5&cooldown.impending_catastrophe.remains<1&(trinket.empyreal_ordnance.cooldown.remains<162|!equipped.empyreal_ordnance)" );
+  def->add_action( "phantom_singularity,if=(covenant.necrolord|covenant.kyrian|covenant.none)&(trinket.empyreal_ordnance.cooldown.remains<162|!equipped.empyreal_ordnance)" );
+  def->add_action( "phantom_singularity,if=time_to_die<16" );
+
+  def->add_action( "call_action_list,name=covenant,if=dot.phantom_singularity.ticking&(covenant.night_fae|covenant.venthyr)", "If Phantom Singularity is ticking, it's time to use other major dots" );
+
+  def->add_action( "agony,cycle_targets=1,target_if=dot.agony.remains<4" );
   def->add_action( "haunt" );
 
-  def->add_action( "call_action_list,name=darkglare_prep,if=active_enemies>2&covenant.venthyr&(cooldown.impending_catastrophe.ready|dot.impending_catastrophe_dot.ticking)&(dot.phantom_singularity.ticking|!talent.phantom_singularity.enabled)" );
-  def->add_action( "call_action_list,name=darkglare_prep,if=active_enemies>2&(covenant.necrolord|covenant.kyrian|covenant.none)&(dot.phantom_singularity.ticking|!talent.phantom_singularity.enabled)" );
-  def->add_action( "call_action_list,name=darkglare_prep,if=active_enemies>2&covenant.night_fae&(cooldown.soul_rot.ready|dot.soul_rot.ticking)&(dot.phantom_singularity.ticking|!talent.phantom_singularity.enabled)" );
-
-  def->add_action( "seed_of_corruption,if=active_enemies>2&talent.sow_the_seeds.enabled&!dot.seed_of_corruption.ticking&!in_flight" );
-  def->add_action( "seed_of_corruption,if=active_enemies>2&talent.siphon_life.enabled&!dot.seed_of_corruption.ticking&!in_flight&dot.corruption.remains<4" );
+  def->add_action( "seed_of_corruption,if=active_enemies>2&talent.sow_the_seeds&!dot.seed_of_corruption.ticking&!in_flight", "Sow the Seeds on 3 targets if it isn't currently in flight or on the target. With Siphon Life it's also better to use Seed over manually applying 3 Corruptions." );
+  def->add_action( "seed_of_corruption,if=active_enemies>2&talent.siphon_life&!dot.seed_of_corruption.ticking&!in_flight&dot.corruption.remains<4" );
 
   def->add_action( "vile_taint,if=(soul_shard>1|active_enemies>2)&cooldown.summon_darkglare.remains>12" );
   def->add_action( "unstable_affliction,if=dot.unstable_affliction.remains<4" );
-  def->add_action( "siphon_life,if=dot.siphon_life.remains<4" );
-  def->add_action( "siphon_life,cycle_targets=1,if=active_enemies>1,target_if=dot.siphon_life.remains<4" );
+  def->add_action( "siphon_life,cycle_targets=1,target_if=dot.siphon_life.remains<4" );
 
-  def->add_action( "call_action_list,name=covenant,if=!covenant.necrolord" );
+  def->add_action( "call_action_list,name=covenant,if=!covenant.necrolord", "If not using Phantom Singularity, don't apply covenant dots until other core dots are safe" );
 
-  def->add_action( "corruption,if=active_enemies<4-(talent.sow_the_seeds.enabled|talent.siphon_life.enabled)&dot.corruption.remains<2" );
-  def->add_action( "corruption,cycle_targets=1,if=active_enemies<4-(talent.sow_the_seeds.enabled|talent.siphon_life.enabled),target_if=dot.corruption.remains<2" );
-  def->add_action( "phantom_singularity" );
-  def->add_action( "malefic_rapture,if=soul_shard>4" );
+  def->add_action( "corruption,cycle_targets=1,if=active_enemies<4-(talent.sow_the_seeds|talent.siphon_life),target_if=dot.corruption.remains<2", "Apply Corruption manually on 1-2 targets, or on 3 with Absolute Corruption" );
 
-  def->add_action( "call_action_list,name=darkglare_prep,if=covenant.venthyr&(cooldown.impending_catastrophe.ready|dot.impending_catastrophe_dot.ticking)&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity.enabled)" );
-  def->add_action( "call_action_list,name=darkglare_prep,if=(covenant.necrolord|covenant.kyrian|covenant.none)&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity.enabled)" );
-  def->add_action( "call_action_list,name=darkglare_prep,if=covenant.night_fae&(cooldown.soul_rot.ready|dot.soul_rot.ticking)&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity.enabled)" );
+  def->add_action( "malefic_rapture,if=soul_shard>4&time>21", "After the opener, spend a shard when at 5 on Malefic Rapture to avoid overcapping" );
 
-  def->add_action( "dark_soul,if=cooldown.summon_darkglare.remains>time_to_die" );
-  def->add_action( "call_action_list,name=item" );
-  def->add_action( "call_action_list,name=se,if=debuff.shadow_embrace.stack<(2-action.shadow_bolt.in_flight)|debuff.shadow_embrace.remains<3" );
+  def->add_action( "call_action_list,name=darkglare_prep,if=covenant.venthyr&!talent.phantom_singularity&dot.impending_catastrophe_dot.ticking&cooldown.summon_darkglare.ready", "When not syncing Phantom Singularity to Venthyr/Night Fae, Summon Darkglare if all dots are applied" );
+  def->add_action( "call_action_list,name=darkglare_prep,if=covenant.night_fae&!talent.phantom_singularity&dot.soul_rot.ticking&cooldown.summon_darkglare.ready" );
+  def->add_action( "call_action_list,name=darkglare_prep,if=(covenant.necrolord|covenant.kyrian|covenant.none)&cooldown.summon_darkglare.ready" );
 
-  def->add_action( "malefic_rapture,if=dot.vile_taint.ticking" );
-  def->add_action( "malefic_rapture,if=dot.impending_catastrophe_dot.ticking" );
-  def->add_action( "malefic_rapture,if=dot.soul_rot.ticking" );
-  def->add_action( "malefic_rapture,if=talent.phantom_singularity.enabled&(dot.phantom_singularity.ticking|soul_shard>3|time_to_die<cooldown.phantom_singularity.remains)" );
-  def->add_action( "malefic_rapture,if=talent.sow_the_seeds.enabled" );
+  def->add_action( "dark_soul,if=cooldown.summon_darkglare.remains>time_to_die&(!talent.phantom_singularity|cooldown.phantom_singularity.remains>time_to_die)", "Use Dark Soul if Darkglare won't be ready again, or if there will be at least 2 more Darkglare uses" );
+  def->add_action( "dark_soul,if=!talent.phantom_singularity&cooldown.summon_darkglare.remains+cooldown.summon_darkglare.duration<time_to_die" );
 
-  def->add_action( "drain_life,if=buff.inevitable_demise.stack>40|buff.inevitable_demise.up&time_to_die<4" );
+  def->add_action( "call_action_list,name=item", "Catch-all item usage for anything not specified elsewhere" );
+
+  def->add_action( "call_action_list,name=se,if=debuff.shadow_embrace.stack<(2-action.shadow_bolt.in_flight)|debuff.shadow_embrace.remains<3", "Refresh Shadow Embrace before spending shards on Malefic Rapture" );
+
+  def->add_action( "malefic_rapture,if=dot.vile_taint.ticking|dot.impending_catastrophe_dot.ticking|dot.soul_rot.ticking", "Use Malefic Rapture when major dots are up, or if there will be significant time until the next Phantom Singularity" );
+  def->add_action( "malefic_rapture,if=talent.phantom_singularity&(dot.phantom_singularity.ticking|cooldown.phantom_singularity.remains>25|time_to_die<cooldown.phantom_singularity.remains)" );
+  def->add_action( "malefic_rapture,if=talent.sow_the_seeds" );
+
+  def->add_action( "drain_life,if=buff.inevitable_demise.stack>40|buff.inevitable_demise.up&time_to_die<4", "Drain Life is only a DPS gain with Inevitable Demise near max stacks. If fight is about to end do not miss spending the stacks" );
   def->add_action( "call_action_list,name=covenant" );
-  def->add_action( "agony,if=refreshable" );
-  def->add_action( "agony,cycle_targets=1,if=active_enemies>1,target_if=refreshable" );
-  def->add_action( "corruption,if=refreshable&active_enemies<4-(talent.sow_the_seeds.enabled|talent.siphon_life.enabled)" );
+  def->add_action( "agony,cycle_targets=1,target_if=refreshable" );
   def->add_action( "unstable_affliction,if=refreshable" );
-  def->add_action( "siphon_life,if=refreshable" );
-  def->add_action( "siphon_life,cycle_targets=1,if=active_enemies>1,target_if=refreshable" );
-  def->add_action( "corruption,cycle_targets=1,if=active_enemies<4-(talent.sow_the_seeds.enabled|talent.siphon_life.enabled),target_if=refreshable" );
+  def->add_action( "siphon_life,cycle_targets=1,target_if=refreshable" );
+  def->add_action( "corruption,cycle_targets=1,if=active_enemies<4-(talent.sow_the_seeds|talent.siphon_life),target_if=refreshable" );
   def->add_action( "drain_soul,interrupt=1" );
   def->add_action( "shadow_bolt" );
 
-  prep->add_action( "vile_taint,if=cooldown.summon_darkglare.remains<2" );
+  prep->add_action( "vile_taint" );
   prep->add_action( "dark_soul" );
   prep->add_action( "potion" );
   prep->add_action( "fireblood" );
   prep->add_action( "blood_fury" );
   prep->add_action( "berserking" );
-  prep->add_action( "call_action_list,name=covenant,if=!covenant.necrolord&cooldown.summon_darkglare.remains<2" );
+  prep->add_action( "call_action_list,name=covenant,if=!covenant.necrolord" );
   prep->add_action( "summon_darkglare" );
 
   se->add_action( "haunt" );
@@ -1127,24 +971,28 @@ void warlock_t::create_apl_affliction()
 
   aoe->add_action( "phantom_singularity" );
   aoe->add_action( "haunt" );
-  aoe->add_action( "call_action_list,name=darkglare_prep,if=covenant.venthyr&dot.impending_catastrophe_dot.ticking&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity.enabled)" );
-  aoe->add_action( "call_action_list,name=darkglare_prep,if=covenant.night_fae&dot.soul_rot.ticking&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity.enabled)" );
+  aoe->add_action( "call_action_list,name=darkglare_prep,if=covenant.venthyr&dot.impending_catastrophe_dot.ticking&cooldown.summon_darkglare.ready&(dot.phantom_singularity.remains>2|!talent.phantom_singularity)" );
+  aoe->add_action( "call_action_list,name=darkglare_prep,if=covenant.night_fae&dot.soul_rot.ticking&cooldown.summon_darkglare.ready&(dot.phantom_singularity.remains>2|!talent.phantom_singularity)" );
   aoe->add_action( "call_action_list,name=darkglare_prep,if=(covenant.necrolord|covenant.kyrian|covenant.none)&dot.phantom_singularity.ticking&dot.phantom_singularity.remains<2" );
-  aoe->add_action( "seed_of_corruption,if=talent.sow_the_seeds.enabled&can_seed" );
-  aoe->add_action( "seed_of_corruption,if=!talent.sow_the_seeds.enabled&!dot.seed_of_corruption.ticking&!in_flight&dot.corruption.refreshable" );
+  aoe->add_action( "seed_of_corruption,if=talent.sow_the_seeds&can_seed" );
+  aoe->add_action( "seed_of_corruption,if=!talent.sow_the_seeds&!dot.seed_of_corruption.ticking&!in_flight&dot.corruption.refreshable" );
   aoe->add_action( "agony,cycle_targets=1,if=active_dot.agony<4,target_if=!dot.agony.ticking" );
   aoe->add_action( "agony,cycle_targets=1,if=active_dot.agony>=4,target_if=refreshable&dot.agony.ticking" );
   aoe->add_action( "unstable_affliction,if=dot.unstable_affliction.refreshable" );
   aoe->add_action( "vile_taint,if=soul_shard>1" );
   aoe->add_action( "call_action_list,name=covenant,if=!covenant.necrolord" );
-  aoe->add_action( "call_action_list,name=darkglare_prep,if=covenant.venthyr&(cooldown.impending_catastrophe.ready|dot.impending_catastrophe_dot.ticking)&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity.enabled)" );
-  aoe->add_action( "call_action_list,name=darkglare_prep,if=(covenant.necrolord|covenant.kyrian|covenant.none)&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity.enabled)" );
-  aoe->add_action( "call_action_list,name=darkglare_prep,if=covenant.night_fae&(cooldown.soul_rot.ready|dot.soul_rot.ticking)&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity.enabled)" );
-  aoe->add_action( "dark_soul,if=cooldown.summon_darkglare.remains>time_to_die" );
+  aoe->add_action( "call_action_list,name=darkglare_prep,if=covenant.venthyr&(cooldown.impending_catastrophe.ready|dot.impending_catastrophe_dot.ticking)&cooldown.summon_darkglare.ready&(dot.phantom_singularity.remains>2|!talent.phantom_singularity)" );
+  aoe->add_action( "call_action_list,name=darkglare_prep,if=(covenant.necrolord|covenant.kyrian|covenant.none)&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity)" );
+  aoe->add_action( "call_action_list,name=darkglare_prep,if=covenant.night_fae&(cooldown.soul_rot.ready|dot.soul_rot.ticking)&cooldown.summon_darkglare.remains<2&(dot.phantom_singularity.remains>2|!talent.phantom_singularity)" );
+  aoe->add_action( "dark_soul,if=cooldown.summon_darkglare.remains>time_to_die&(!talent.phantom_singularity|cooldown.phantom_singularity.remains>time_to_die)" );
+  aoe->add_action( "dark_soul,if=cooldown.summon_darkglare.remains+cooldown.summon_darkglare.duration<time_to_die" );
   aoe->add_action( "call_action_list,name=item" );
+  aoe->add_action( "call_action_list,name=delayed_trinkets" );
+  aoe->add_action( "call_action_list,name=damage_trinkets" );
+  aoe->add_action( "call_action_list,name=stat_trinkets,if=dot.phantom_singularity.ticking|!talent.phantom_singularity" );
   aoe->add_action( "malefic_rapture,if=dot.vile_taint.ticking" );
-  aoe->add_action( "malefic_rapture,if=dot.soul_rot.ticking&!talent.sow_the_seeds.enabled" );
-  aoe->add_action( "malefic_rapture,if=!talent.vile_taint.enabled" );
+  aoe->add_action( "malefic_rapture,if=dot.soul_rot.ticking&!talent.sow_the_seeds" );
+  aoe->add_action( "malefic_rapture,if=!talent.vile_taint" );
   aoe->add_action( "malefic_rapture,if=soul_shard>4" );
   aoe->add_action( "siphon_life,cycle_targets=1,if=active_dot.siphon_life<=3,target_if=!dot.siphon_life.ticking" );
   aoe->add_action( "call_action_list,name=covenant" );
@@ -1152,11 +1000,46 @@ void warlock_t::create_apl_affliction()
   aoe->add_action( "drain_soul,interrupt=1" );
   aoe->add_action( "shadow_bolt" );
 
-  cov->add_action( "impending_catastrophe,if=cooldown.summon_darkglare.remains<10|cooldown.summon_darkglare.remains>50" );
-  cov->add_action( "decimating_bolt,if=cooldown.summon_darkglare.remains>5&(debuff.haunt.remains>4|!talent.haunt.enabled)" );
-  cov->add_action( "soul_rot,if=cooldown.summon_darkglare.remains<5|cooldown.summon_darkglare.remains>50|cooldown.summon_darkglare.remains>25&conduit.corrupting_leer.enabled" );
+  cov->add_action( "impending_catastrophe,if=!talent.phantom_singularity&(cooldown.summon_darkglare.remains<10|cooldown.summon_darkglare.remains>50&cooldown.summon_darkglare.remains>25&conduit.corrupting_leer)" );
+  cov->add_action( "impending_catastrophe,if=talent.phantom_singularity&dot.phantom_singularity.ticking" );
+  cov->add_action( "decimating_bolt,if=cooldown.summon_darkglare.remains>5&(debuff.haunt.remains>4|!talent.haunt)" );
+  cov->add_action( "soul_rot,if=!talent.phantom_singularity&(cooldown.summon_darkglare.remains<5|cooldown.summon_darkglare.remains>50|cooldown.summon_darkglare.remains>25&conduit.corrupting_leer)" );
+  cov->add_action( "soul_rot,if=talent.phantom_singularity&dot.phantom_singularity.ticking" );
   cov->add_action( "scouring_tithe" );
 
   item->add_action( "use_items" );
+
+  dot->add_action( "agony,if=dot.agony.remains<8&cooldown.summon_darkglare.remains>dot.agony.remains" );
+  dot->add_action( "siphon_life,if=dot.siphon_life.remains<8&cooldown.summon_darkglare.remains>dot.siphon_life.remains" );
+  dot->add_action( "unstable_affliction,if=dot.unstable_affliction.remains<8&cooldown.summon_darkglare.remains>dot.unstable_affliction.remains" );
+  dot->add_action( "corruption,if=dot.corruption.remains<8&cooldown.summon_darkglare.remains>dot.corruption.remains" );
+
+  delay->add_action( "use_item,name=empyreal_ordnance,if=(covenant.night_fae&cooldown.soul_rot.remains<20)|(covenant.venthyr&cooldown.impending_catastrophe.remains<20)|(covenant.necrolord|covenant.kyrian|covenant.none)" );
+  delay->add_action( "use_item,name=sunblood_amethyst,if=(covenant.night_fae&cooldown.soul_rot.remains<6)|(covenant.venthyr&cooldown.impending_catastrophe.remains<6)|(covenant.necrolord|covenant.kyrian|covenant.none)" );
+  delay->add_action( "use_item,name=soulletting_ruby,if=(covenant.night_fae&cooldown.soul_rot.remains<8)|(covenant.venthyr&cooldown.impending_catastrophe.remains<8)|(covenant.necrolord|covenant.kyrian|covenant.none)" );
+
+  stat->add_action( "use_item,name=inscrutable_quantum_device" );
+  stat->add_action( "use_item,name=instructors_divine_bell" );
+  stat->add_action( "use_item,name=overflowing_anima_cage" );
+  stat->add_action( "use_item,name=darkmoon_deck_putrescence" );
+  stat->add_action( "use_item,name=macabre_sheet_music" );
+  stat->add_action( "use_item,name=flame_of_battle" );
+  stat->add_action( "use_item,name=wakeners_frond" );
+  stat->add_action( "use_item,name=tablet_of_despair" );
+  stat->add_action( "use_item,name=sinful_aspirants_badge_of_ferocity" );
+  stat->add_action( "use_item,name=sinful_gladiators_badge_of_ferocity" );
+  stat->add_action( "blood_fury" );
+  stat->add_action( "fireblood" );
+  stat->add_action( "berserking" );
+
+  dmg->add_action( "use_item,name=soul_igniter" );
+  dmg->add_action( "use_item,name=dreadfire_vessel" );
+  dmg->add_action( "use_item,name=glyph_of_assimilation" );
+
+  split->add_action( "variable,name=special_equipped,value=(((equipped.empyreal_ordnance^equipped.inscrutable_quantum_device)^equipped.soulletting_ruby)^equipped.sunblood_amethyst)" );
+  split->add_action( "variable,name=trinket_one,value=(trinket.1.has_proc.any&trinket.1.has_cooldown)" );
+  split->add_action( "variable,name=trinket_two,value=(trinket.2.has_proc.any&trinket.2.has_cooldown)" );
+  split->add_action( "variable,name=damage_trinket,value=(!(trinket.1.has_proc.any&trinket.1.has_cooldown))|(!(trinket.2.has_proc.any&trinket.2.has_cooldown))|equipped.glyph_of_assimilation" );
+  split->add_action( "variable,name=trinket_split,value=(variable.trinket_one&variable.damage_trinket)|(variable.trinket_two&variable.damage_trinket)|(variable.trinket_one^variable.special_equipped)|(variable.trinket_two^variable.special_equipped)" );
 }
 }  // namespace warlock

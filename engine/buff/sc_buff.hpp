@@ -13,9 +13,8 @@
 
 #include "util/timespan.hpp"
 #include "sc_enums.hpp"
-#include "dbc/dbc.hpp"
+#include "dbc/data_enums.hh"
 #include "player/sc_actor_pair.hpp"
-#include "player/covenant.hpp"
 #include "util/sample_data.hpp"
 #include "util/span.hpp"
 #include "util/string_view.hpp"
@@ -24,7 +23,9 @@
 #include "util/format.hpp"
 
 struct buff_t;
+class conduit_data_t;
 struct stat_buff_t;
+struct spelleffect_data_t;
 struct absorb_buff_t;
 struct cost_reduction_buff_t;
 struct actor_pair_t;
@@ -101,6 +102,7 @@ public:
   std::vector<timespan_t> stack_react_time;
   std::vector<event_t*> stack_react_ready_triggers;
 
+  buff_constant_behavior constant_behavior;
   buff_refresh_behavior refresh_behavior;
   buff_refresh_duration_callback_t refresh_duration_callback;
   buff_stack_behavior stack_behavior;
@@ -344,6 +346,7 @@ public:
   buff_t* set_tick_callback( buff_tick_callback_t );
   buff_t* set_tick_time_callback( buff_tick_time_callback_t );
   buff_t* set_affects_regen( bool state );
+  buff_t* set_constant_behavior( buff_constant_behavior );
   buff_t* set_refresh_behavior( buff_refresh_behavior );
   buff_t* set_refresh_duration_callback( buff_refresh_duration_callback_t );
   buff_t* set_tick_zero( bool v ) { tick_zero = v; return this; }

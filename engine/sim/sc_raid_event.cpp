@@ -28,7 +28,6 @@ struct adds_event_t final : public raid_event_t
   double count;
   double health;
   std::string master_str;
-  std::string name_str;
   player_t* master;
   std::vector<pet_t*> adds;
   double count_range;
@@ -52,7 +51,6 @@ struct adds_event_t final : public raid_event_t
       count( 1 ),
       health( 100000 ),
       master_str(),
-      name_str( "Add" ),
       master(),
       count_range( false ),
       adds_to_remove( 0 ),
@@ -70,7 +68,6 @@ struct adds_event_t final : public raid_event_t
       enemy_type( ENEMY_ADD ),
       same_duration( false )
   {
-    add_option( opt_string( "name", name_str ) );
     add_option( opt_string( "master", master_str ) );
     add_option( opt_float( "count", count ) );
     add_option( opt_float( "health", health ) );
@@ -244,14 +241,14 @@ struct adds_event_t final : public raid_event_t
         std::string add_name_str;
 
         if ( sim->add_waves > 1 &&
-             name_str == "Add" )  // Only add wave to secondary wave that aren't given manual names.
+             name.empty() )  // Only add wave to secondary wave that aren't given manual names.
         {
           add_name_str += "Wave";
           add_name_str += util::to_string( sim->add_waves );
           add_name_str += "_";
         }
 
-        add_name_str += name_str;
+        add_name_str += name;
         add_name_str += util::to_string( add + 1 );
 
         pet_t* p = master->create_pet( add_name_str );
@@ -354,7 +351,7 @@ struct move_enemy_t final : public raid_event_t
 {
   double x_coord;
   double y_coord;
-  std::string name;
+  std::string enemy_name;
   player_t* enemy;
   double original_x;
   double original_y;
@@ -363,23 +360,23 @@ struct move_enemy_t final : public raid_event_t
     : raid_event_t( s, "move_enemy" ),
       x_coord( 0.0 ),
       y_coord( 0.0 ),
-      name( "" ),
+      enemy_name(),
       enemy( nullptr ),
       original_x( 0.0 ),
       original_y( 0.0 )
   {
     add_option( opt_float( "x", x_coord ) );
     add_option( opt_float( "y", y_coord ) );
-    add_option( opt_string( "name", name ) );
+    add_option( opt_string( "enemy_name", enemy_name ) );
     parse_options( options_str );
 
-    enemy                           = sim->find_player( name );
+    enemy                           = sim->find_player( enemy_name );
     sim->distance_targeting_enabled = true;
 
     if ( !enemy )
     {
       throw std::invalid_argument(
-          fmt::format( "Move enemy event cannot be created, there is no enemy named '{}'.", name ) );
+          fmt::format( "Move enemy event cannot be created, there is no enemy named '{}'.", enemy_name ) );
     }
   }
 
@@ -845,7 +842,7 @@ struct damage_event_t final : public raid_event_t
     {
       struct raid_damage_t : public spell_t
       {
-        raid_damage_t( const char* n, player_t* player, school_e s ) : spell_t( n, player, spell_data_t::nil() )
+        raid_damage_t( const char* n, player_t* player, school_e s ) : spell_t( n, player )
         {
           school      = s;
           may_crit    = false;
@@ -903,7 +900,7 @@ struct heal_event_t final : public raid_event_t
     {
       struct raid_heal_t : public heal_t
       {
-        raid_heal_t( const char* n, player_t* player ) : heal_t( n, player, spell_data_t::nil() )
+        raid_heal_t( const char* n, player_t* player ) : heal_t( n, player )
         {
           school      = SCHOOL_HOLY;
           may_crit    = false;
@@ -1094,7 +1091,7 @@ std::unique_ptr<expr_t> parse_player_if_expr( player_t& player, util::string_vie
   if ( player.sim->debug )
     expression::print_tokens( tokens, player.sim );
 
-  if ( auto e = expression::build_player_expression_tree( player, tokens, player.sim->optimize_expressions ) )
+  if ( auto e = expression::build_player_expression_tree( player, tokens, false ) )
     return e;
 
   throw std::invalid_argument( "No player expression found" );
@@ -1709,7 +1706,7 @@ bool raid_event_t::filter_player( const player_t* p )
 }
 
 double raid_event_t::evaluate_raid_event_expression( sim_t* s, util::string_view type_or_name, util::string_view filter,
-                                                     bool test_filter )
+                                                     bool test_filter, bool* is_constant )
 {
   // correct for "damage" type event
   if ( util::str_compare_ci( type_or_name, "damage" ) )
@@ -1730,14 +1727,22 @@ double raid_event_t::evaluate_raid_event_expression( sim_t* s, util::string_view
 
   if ( matching_events.empty() )
   {
+    assert(is_constant);
+    *is_constant = true;
     if ( filter == "in" || filter == "cooldown" )
       return timespan_t::max().total_seconds();  // ridiculously large number
     else if ( !test_filter )                     // When evaluating filter expr validity, let this one continue through
+    {
       return 0.0;
+    }
     // return constant based on filter
   }
   else if ( filter == "exists" )
+  {
+    assert(is_constant);
+    *is_constant = true;
     return 1.0;
+  }
 
   if ( filter == "remains" )
   {

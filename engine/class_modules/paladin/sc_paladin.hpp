@@ -50,84 +50,9 @@ struct paladin_td_t : public actor_target_data_t
   paladin_td_t( player_t* target, paladin_t* paladin );
 };
 
-struct cooldown_waste_data_t : public noncopyable
-{
-  const cooldown_t* cd;
-  double buffer;
-
-  extended_sample_data_t normal;
-  extended_sample_data_t cumulative;
-
-  cooldown_waste_data_t( const cooldown_t* cooldown, bool simple = true ) :
-    cd( cooldown ), buffer( 0.0 ), normal( cd -> name_str + " waste", simple ),
-    cumulative( cd -> name_str + " cumulative waste", simple ) {}
-
-  virtual bool may_add( timespan_t cd_override = timespan_t::min() ) const
-  {
-    return ( cd -> duration > 0_ms || cd_override > 0_ms )
-        && ( ( cd -> charges == 1 && cd -> up() ) || ( cd -> charges >= 2 && cd -> current_charge == cd -> charges ) )
-        && ( cd -> last_charged > 0_ms && cd -> last_charged < cd -> sim.current_time() );
-  }
-
-  virtual double get_wasted_time()
-  {
-    return (cd -> sim.current_time() - cd -> last_charged).total_seconds();
-  }
-
-  void add( timespan_t cd_override = timespan_t::min(), timespan_t time_to_execute = 0_ms )
-  {
-    if ( may_add( cd_override ) )
-    {
-      double wasted = get_wasted_time();
-      if ( cd -> charges == 1 )
-      {
-        wasted -= time_to_execute.total_seconds();
-      }
-      normal.add( wasted );
-      buffer += wasted;
-    }
-  }
-
-  bool active() const
-  {
-    return normal.count() > 0 && cumulative.sum() > 0;
-  }
-
-  void merge( const cooldown_waste_data_t& other )
-  {
-    normal.merge( other.normal );
-    cumulative.merge( other.cumulative );
-  }
-
-  void analyze()
-  {
-    normal.analyze();
-    cumulative.analyze();
-  }
-
-  void datacollection_begin()
-  {
-    buffer = 0.0;
-  }
-
-  void datacollection_end()
-  {
-    if ( may_add() )
-      buffer += get_wasted_time();
-    cumulative.add( buffer );
-    buffer = 0.0;
-  }
-
-  virtual ~cooldown_waste_data_t() { }
-};
-
 struct paladin_t : public player_t
 {
 public:
-
-  // waste tracking
-  auto_dispose<std::vector<cooldown_waste_data_t*> > cooldown_waste_data_list;
-
   // Active spells
   struct active_spells_t
   {
@@ -172,6 +97,7 @@ public:
     // Holy
     buff_t* divine_protection;
     buff_t* holy_avenger;
+    buff_t* avenging_crusader;
     buff_t* infusion_of_light;
 
     // Prot
@@ -252,6 +178,7 @@ public:
     const spell_data_t* retribution_paladin;
     const spell_data_t* hammer_of_the_righteous_2;
     const spell_data_t* word_of_glory_2;
+    const spell_data_t* holy_shock_2;
   } spec;
 
   // Cooldowns
@@ -342,6 +269,7 @@ public:
 
     const spell_data_t* judgment_2;
     const spell_data_t* avenging_wrath_2;
+    const spell_data_t* avenging_wrath_3;
     const spell_data_t* hammer_of_wrath_2;
 
     const spell_data_t* ashen_hallow_how;
@@ -623,28 +551,6 @@ public:
 
   virtual const paladin_td_t* find_target_data( const player_t* target ) const override;
   virtual paladin_td_t* get_target_data( player_t* target ) const override;
-
-  cooldown_waste_data_t* get_cooldown_waste_data( cooldown_t* cd, cooldown_waste_data_t *(*factory)(cooldown_t*) = nullptr )
-  {
-    for ( auto cdw : cooldown_waste_data_list )
-    {
-      if ( cdw -> cd -> name_str == cd -> name_str )
-        return cdw;
-    }
-
-    cooldown_waste_data_t* cdw = nullptr;
-    if ( factory == nullptr ) {
-      cdw = new cooldown_waste_data_t( cd );
-    } else {
-      cdw = factory( cd );
-    }
-    cooldown_waste_data_list.push_back( cdw );
-    return cdw;
-  }
-  virtual void merge( player_t& other ) override;
-  virtual void analyze( sim_t& s ) override;
-  virtual void datacollection_begin() override;
-  virtual void datacollection_end() override;
 };
 
 namespace buffs {
@@ -677,14 +583,14 @@ namespace buffs {
   {
     crusade_buff_t( player_t* p );
 
-    double get_damage_mod()
+    double get_damage_mod() const
     {
-      return damage_modifier * ( this -> stack() );
+      return damage_modifier * ( this -> check() );
     }
 
-    double get_haste_bonus()
+    double get_haste_bonus() const
     {
-      return haste_bonus * ( this -> stack() );
+      return haste_bonus * ( this -> check() );
     }
     private:
     double damage_modifier;
@@ -763,24 +669,24 @@ public:
 
   bool track_cd_waste;
   cooldown_waste_data_t* cd_waste;
-  cooldown_waste_data_t* (*cd_waste_factory)(cooldown_t *);
 
   // Damage increase whitelists
   struct affected_by_t
   {
     bool avenging_wrath, judgment, blessing_of_dawn, the_magistrates_judgment; // Shared
     bool crusade, divine_purpose, divine_purpose_cost, hand_of_light, final_reckoning, reckoning; // Ret
+    bool avenging_crusader; // Holy
   } affected_by;
 
   // haste scaling bools
   bool hasted_cd;
   bool hasted_gcd;
 
-  paladin_action_t( const std::string& n, paladin_t* p,
+  paladin_action_t( util::string_view n, paladin_t* p,
                     const spell_data_t* s = spell_data_t::nil() ) :
     ab( n, p, s ),
     track_cd_waste( s -> cooldown() > 0_ms || s -> charge_cooldown() > 0_ms ),
-    cd_waste( nullptr ), cd_waste_factory( nullptr ),
+    cd_waste( nullptr ), 
     affected_by( affected_by_t() ),
     hasted_cd( false ), hasted_gcd( false )
   {
@@ -795,6 +701,11 @@ public:
       this -> affected_by.reckoning = this -> data().affected_by( p -> spells.reckoning -> effectN( 1 ) );
       this -> affected_by.final_reckoning = this -> data().affected_by( p -> talents.final_reckoning -> effectN( 3 ) );
     }
+    if ( p->specialization() == PALADIN_HOLY )
+    {
+      this->affected_by.avenging_crusader = this->data().affected_by( p->talents.avenging_crusader->effectN(1) );
+    }
+
     this -> affected_by.judgment = this -> data().affected_by( p -> spells.judgment_debuff -> effectN( 1 ) );
     this -> affected_by.avenging_wrath = this -> data().affected_by( p -> spells.avenging_wrath -> effectN( 1 ) );
     this -> affected_by.divine_purpose_cost = this -> data().affected_by( p -> spells.divine_purpose_buff -> effectN( 1 ) );
@@ -817,7 +728,7 @@ public:
 
     if ( track_cd_waste && ab::sim -> report_details != 0 )
     {
-      cd_waste = p() -> get_cooldown_waste_data( ab::cooldown, cd_waste_factory );
+      cd_waste = p() -> get_cooldown_waste_data( ab::cooldown );
     }
 
     if ( hasted_cd )
@@ -917,6 +828,11 @@ public:
       am *= 1.0 + p() -> buffs.avenging_wrath -> get_damage_mod();
     }
 
+    if ( affected_by.avenging_crusader )
+    {
+      am *= 1.0 + p()->buffs.avenging_crusader->check_value();
+    }
+
     // Divine purpose damage increase handled here,
     // Cost handled in holy_power_consumer_t
     if ( affected_by.divine_purpose && p() -> buffs.divine_purpose -> up() )
@@ -997,7 +913,7 @@ private:
 public:
   typedef paladin_spell_base_t base_t;
 
-  paladin_spell_base_t( const std::string& n, paladin_t* player,
+  paladin_spell_base_t( util::string_view n, paladin_t* player,
                         const spell_data_t* s = spell_data_t::nil() ) :
     ab( n, player, s )
   { }
@@ -1018,7 +934,7 @@ public:
 
 struct paladin_spell_t : public paladin_spell_base_t<spell_t>
 {
-  paladin_spell_t( const std::string& n, paladin_t* p,
+  paladin_spell_t( util::string_view n, paladin_t* p,
                    const spell_data_t* s = spell_data_t::nil() ) :
     base_t( n, p, s )
   { }
@@ -1026,7 +942,7 @@ struct paladin_spell_t : public paladin_spell_base_t<spell_t>
 
 struct paladin_heal_t : public paladin_spell_base_t<heal_t>
 {
-  paladin_heal_t( const std::string& n, paladin_t* p,
+  paladin_heal_t( util::string_view n, paladin_t* p,
                   const spell_data_t* s = spell_data_t::nil() ) :
     base_t( n, p, s )
   {
@@ -1074,7 +990,7 @@ struct paladin_heal_t : public paladin_spell_base_t<heal_t>
 
 struct paladin_absorb_t : public paladin_spell_base_t< absorb_t >
 {
-  paladin_absorb_t( const std::string& n, paladin_t* p,
+  paladin_absorb_t( util::string_view n, paladin_t* p,
                     const spell_data_t* s = spell_data_t::nil() ) :
     base_t( n, p, s )
   { }
@@ -1082,7 +998,7 @@ struct paladin_absorb_t : public paladin_spell_base_t< absorb_t >
 
 struct paladin_melee_attack_t: public paladin_action_t < melee_attack_t >
 {
-  paladin_melee_attack_t( const std::string& n, paladin_t* p,
+  paladin_melee_attack_t( util::string_view n, paladin_t* p,
                           const spell_data_t* s = spell_data_t::nil()) :
     base_t( n, p, s )
   {
@@ -1140,7 +1056,7 @@ struct holy_power_consumer_t : public Base
     typedef holy_power_consumer_t base_t;
   bool is_divine_storm;
   bool is_wog;
-  holy_power_consumer_t( const std::string& n, paladin_t* player, const spell_data_t* s ) :
+  holy_power_consumer_t( util::string_view n, paladin_t* player, const spell_data_t* s ) :
     ab( n, player, s ),
     is_divine_storm ( false ),
     is_wog( false )
@@ -1347,13 +1263,14 @@ struct holy_power_consumer_t : public Base
 struct judgment_t : public paladin_melee_attack_t
 {
   int indomitable_justice_pct;
-  judgment_t( paladin_t* p, const std::string& options_str );
+  judgment_t( paladin_t* p, util::string_view options_str );
   judgment_t( paladin_t* p );
 
   virtual double bonus_da( const action_state_t* s ) const override;
   proc_types proc_type() const override;
   void impact( action_state_t* s ) override;
   void execute() override;
+
 private:
   void do_ctor_common( paladin_t* p );
 };

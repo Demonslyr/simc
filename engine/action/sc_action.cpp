@@ -5,13 +5,13 @@
 
 #include "action/sc_action.hpp"
 #include "action/sc_action_state.hpp"
-#include "action/attack.hpp"
 #include "action/action_callback.hpp"
 #include "dbc/data_enums.hh"
 #include "dbc/dbc.hpp"
 #include "buff/sc_buff.hpp"
 #include "action/dot.hpp"
 #include "player/actor_target_data.hpp"
+#include "player/covenant.hpp"
 #include "player/player_event.hpp"
 #include "player/stats.hpp"
 #include "player/sc_player.hpp"
@@ -22,7 +22,6 @@
 #include "sim/sc_expressions.hpp"
 #include "sim/sc_cooldown.hpp"
 #include "sim/sc_sim.hpp"
-#include "sim/raid_event.hpp"
 #include "util/rng.hpp"
 #include "player/expansion_effects.hpp" // try to implement leyshocks_grand_compilation as a callback
 #include "util/util.hpp"
@@ -2650,33 +2649,30 @@ void action_t::reset()
   queue_event                  = nullptr;
   interrupt_immediate_occurred = false;
   travel_events.clear();
-  target = default_target;
+  target    = default_target;
   last_used = timespan_t::min();
 
   target_cache.is_valid = false;
 
-  if( player->nth_iteration() == 1 )
+  if ( if_expr )
   {
-    if ( if_expr )
+    expr_t::optimize_expression( if_expr, *sim );
+    if ( ( player->nth_iteration() - sim->optimize_expressions ) >= 0 && action_list && if_expr->always_false() )
     {
-      expr_t::optimize_expression(if_expr);
-      if ( sim->optimize_expressions && action_list && if_expr->always_false() )
+      std::vector<action_t*>::iterator i =
+          std::find( action_list->foreground_action_list.begin(), action_list->foreground_action_list.end(), this );
+      if ( i != action_list->foreground_action_list.end() )
       {
-        std::vector<action_t*>::iterator i =
-            std::find( action_list->foreground_action_list.begin(), action_list->foreground_action_list.end(), this );
-        if ( i != action_list->foreground_action_list.end() )
-        {
-          action_list->foreground_action_list.erase( i );
-        }
-
-        player->dynamic_target_action_list.erase( this );
+        action_list->foreground_action_list.erase( i );
       }
+
+      player->dynamic_target_action_list.erase( this );
     }
-      expr_t::optimize_expression(target_if_expr);
-      expr_t::optimize_expression(interrupt_if_expr);
-      expr_t::optimize_expression(early_chain_if_expr);
-      expr_t::optimize_expression(cancel_if_expr);
   }
+  expr_t::optimize_expression( target_if_expr, *sim );
+  expr_t::optimize_expression( interrupt_if_expr, *sim );
+  expr_t::optimize_expression( early_chain_if_expr, *sim );
+  expr_t::optimize_expression( cancel_if_expr, *sim );
 }
 
 void action_t::cancel()
@@ -3877,6 +3873,15 @@ void action_t::impact( action_state_t* s )
   else
   {
     sim->print_log( "Target {} avoids {} {} ({})", *s->target, *player, *this, s->result );
+  }
+
+  // Handle Heirmir Marrowed Gemstone Soulbind
+  if ( this -> player -> type == PLAYER_PET && s -> result == RESULT_CRIT )
+  {
+    auto counter_buff = buff_t::find( debug_cast<pet_t*>( this -> player ) -> owner, "marrowed_gemstone_charging" );
+    auto buff = buff_t::find( debug_cast<pet_t*>( this -> player ) -> owner, "marrowed_gemstone_enhancement" );
+    if ( buff && counter_buff && buff -> cooldown -> up() )
+      counter_buff -> trigger();
   }
 }
 

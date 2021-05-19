@@ -101,8 +101,9 @@ public:
     buff_t* weapons_of_order;
 
     // Shadowland Legendaries
+    buff_t* fae_exposure;
     buff_t* keefers_skyreach;
-    buff_t* recently_rushing_tiger_palm;
+    buff_t* skyreach_exhaustion;
   } debuff;
 
   monk_t& monk;
@@ -154,6 +155,9 @@ public:
     // Covenant
     action_t* bonedust_brew_dmg;
     action_t* bonedust_brew_heal;
+
+    // Legendary
+    action_t* bountiful_brew;
   } active_actions;
 
   std::vector<action_t*> combo_strike_actions;
@@ -237,6 +241,7 @@ public:
     buff_t* faeline_stomp;
     buff_t* faeline_stomp_brm;
     buff_t* faeline_stomp_reset;
+    buff_t* fallen_order;
 
     // Covenant Conduits
     absorb_buff_t* fortifying_ingrediences;
@@ -244,6 +249,7 @@ public:
     // Shadowland Legendary
     buff_t* chi_energy;
     buff_t* charred_passions;
+    buff_t* fae_exposure;
     buff_t* invokers_delight;
     buff_t* mighty_pour;
     buff_t* pressure_point;
@@ -445,6 +451,7 @@ public:
     const spell_data_t* renewing_mist;
     const spell_data_t* renewing_mist_2;
     const spell_data_t* revival;
+    const spell_data_t* revival_2;
     const spell_data_t* soothing_mist;
     const spell_data_t* teachings_of_the_monastery;
     const spell_data_t* thunder_focus_tea;
@@ -591,9 +598,18 @@ public:
 
     // Shadowland Legendary
     const spell_data_t* chi_explosion;
+    const spell_data_t* fae_exposure_dmg;
+    const spell_data_t* fae_exposure_heal;
     const spell_data_t* shaohaos_might;
     const spell_data_t* charred_passions_dmg;
   } passives;
+
+  // RPPM objects
+  struct rppms_t
+  {
+    // Shadowland Legendary
+    real_ppm_t* bountiful_brew;
+  } rppm;
 
   // Covenant
   struct covenant_t
@@ -692,6 +708,12 @@ public:
     item_runeforge_t keefers_skyreach;         // 7068
     item_runeforge_t last_emperors_capacitor;  // 7069
     item_runeforge_t xuens_battlegear;         // 7070
+
+    // Covenant
+    item_runeforge_t bountiful_brew;       // 7707; Necrolord Covenant
+    item_runeforge_t call_to_arms;         // 7718; Bastion Covenant
+    item_runeforge_t faeline_harmony;      // 7721; Night Fae Covenant
+    item_runeforge_t sinister_teachings;   // 7726; Venthyr Covenant
   } legendary;
 
   struct pets_t
@@ -715,6 +737,7 @@ public:
     double memory_of_lucid_dreams_proc_chance = 0.15;
     double expel_harm_effectiveness;
     double faeline_stomp_uptime;
+    int chi_burst_healing_targets;
   } user_options;
 
   // Blizzard rounds it's stagger damage; anything higher than half a percent beyond
@@ -761,6 +784,7 @@ public:
   void init_gains() override;
   void init_procs() override;
   void init_assessors() override;
+  void init_rng() override;
   void reset() override;
   double matching_gear_multiplier( attribute_e attr ) const override;
   void create_options() override;
@@ -808,6 +832,7 @@ public:
   double stagger_total();
   void trigger_celestial_fortune( action_state_t* );
   void trigger_bonedust_brew( const action_state_t* );
+  void trigger_keefers_skyreach( action_state_t* );
   void trigger_mark_of_the_crane( action_state_t* );
   void trigger_empowered_tiger_lightning( action_state_t* );
   void trigger_bonedust_brew( action_state_t* );

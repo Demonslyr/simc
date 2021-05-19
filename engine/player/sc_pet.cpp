@@ -12,6 +12,7 @@
 #include "player/actor_target_data.hpp"
 #include "player/spawner_base.hpp"
 #include "sim/event.hpp"
+#include "sim/sc_sim.hpp"
 
 namespace {
 struct expiration_t : public event_t
@@ -102,7 +103,7 @@ double pet_t::composite_player_multiplier( school_e school ) const
 {
   double m = player_t::composite_player_multiplier( school );
 
-  if ( owner -> buffs.legendary_aoe_ring && owner -> buffs.legendary_aoe_ring -> up() )
+  if ( owner -> buffs.legendary_aoe_ring && owner -> buffs.legendary_aoe_ring -> check() )
     m *= 1.0 + owner -> buffs.legendary_aoe_ring -> default_value;
 
   return m;
@@ -111,6 +112,16 @@ double pet_t::composite_player_multiplier( school_e school ) const
 double pet_t::composite_player_target_multiplier( player_t* target, school_e school ) const
 {
   double m = player_t::composite_player_target_multiplier( target, school );
+
+  // Same logic as in player_t::composite_player_target_multiplier() above
+  // As the Covenant buff isn't created on pets, we need to check the owner
+  // Testing shows this appears to work on all pets, even trinkets and such
+  if ( owner->buffs.wild_hunt_tactics )
+  {
+    double health_threshold = 100.0 - ( 100.0 - owner->buffs.wild_hunt_tactics->data().effectN( 5 ).base_value() ) * sim->shadowlands_opts.wild_hunt_tactics_duration_multiplier;
+    if ( target->health_percentage() > health_threshold )
+      m *= 1.0 + owner->buffs.wild_hunt_tactics->default_value;
+  }
 
   if ( auto td = owner->find_target_data( target ) )
   {

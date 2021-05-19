@@ -18,13 +18,13 @@ TODO:
 GENERAL:
 - Change Eye of the Tiger from a dot to an interaction with a buff
 
-- Convert Pet base abilities to somethign more generic
-- Trigger Bonedust Brew from SEF, Xuen, Niuzao, and Chiji
+- Convert Bonedust Brew to use the assessor function. Tinkets and racials also trigger
+- Add assessor to the monk pet module
 
 WINDWALKER:
-- Implement Xuen Rank 2 (Enhanced Tiger Lightning)
 - Implement Touch of Death Rank 3
 - Add Cyclone Strike Counter as an expression
+- Venthyr's Windwalker Fallen Monk's Fist of Fury is reporting double damage.
 
 MISTWEAVER:
 - Essence Font - See if the implementation can be corrected to the intended design.
@@ -32,7 +32,7 @@ MISTWEAVER:
 - Not Modeled:
 
 BREWMASTER:
-- Not Modeled:
+- Breath of Fire is not AoE's on the initial hit. It is only hitting the initial target
 */
 #include "sc_monk.hpp"
 
@@ -41,6 +41,7 @@ BREWMASTER:
 #include "player/pet_spawner.hpp"
 
 #include "simulationcraft.hpp"
+#include <deque>
 
 // ==========================================================================
 // Monk
@@ -62,6 +63,7 @@ struct monk_action_t : public Base
   bool ww_mastery;
   bool may_combo_strike;
   bool trigger_chiji;
+  bool trigger_faeline_stomp;
 
   // Affect flags for various dynamic effects
   struct
@@ -81,6 +83,7 @@ public:
       ww_mastery( false ),
       may_combo_strike( false ),
       trigger_chiji( false ),
+      trigger_faeline_stomp( false ),
       affected_by()
   {
     ab::may_crit = true;
@@ -377,21 +380,29 @@ public:
 
     trigger_storm_earth_and_fire( this );
 
-    if ( p()->buff.faeline_stomp->up() && ab::background == false &&
+    if ( p()->buff.faeline_stomp->up() && trigger_faeline_stomp &&
          p()->rng().roll( p()->user_options.faeline_stomp_uptime ) )
-      if ( p()->rng().roll( p()->buff.faeline_stomp->value() ) )
+    {
+      double reset_value = p()->buff.faeline_stomp->value();
+
+      if ( p()->legendary.faeline_harmony->ok() )
+        reset_value *= 2; // Right now hard-coded; TODO get effect value once implemented.
+
+      if ( p()->rng().roll( reset_value ) )
       {
         p()->cooldown.faeline_stomp->reset( true, 1 );
         p()->buff.faeline_stomp_reset->trigger();
       }
+    }
+
+    if ( p()->legendary.bountiful_brew->ok() && p()->rppm.bountiful_brew->trigger() )
+      p()->active_actions.bountiful_brew->execute();
   }
 
   void impact( action_state_t* s ) override
   {
     if ( s->action->school == SCHOOL_PHYSICAL )
-    {
       trigger_mystic_touch( s );
-    }
 
     // Don't want to cause the buff to be cast and then used up immediately.
     if ( current_resource() == RESOURCE_CHI )
@@ -412,6 +423,12 @@ public:
     }
 
     ab::impact( s );
+
+    if ( p()->legendary.sinister_teachings->ok() )
+    {
+      if ( s->result == RESULT_CRIT && p()->buff.fallen_order->up() )
+        p()->cooldown.fallen_order->adjust( -1 * p()->legendary.sinister_teachings->effectN( 3 ).time_value() );
+    }
 
     p()->trigger_empowered_tiger_lightning( s );
 
@@ -462,7 +479,21 @@ struct monk_spell_t : public monk_action_t<spell_t>
     if ( td( t )->debuff.weapons_of_order->up() )
       m *= 1 + td( t )->debuff.weapons_of_order->stack_value();
 
+    if ( td( t )->debuff.fae_exposure->up() )
+      m *= 1 + p()->passives.fae_exposure_dmg->effectN( 1 ).percent();
+
     return m;
+  }
+
+  double composite_target_crit_chance( player_t* target ) const override
+  {
+    double c = base_t::composite_target_crit_chance( target );
+
+    if ( td( target )->debuff.keefers_skyreach->up() &&
+         base_t::data().affected_by( td( target )->debuff.keefers_skyreach->data().effectN( 1 ) ) )
+      c += td( target )->debuff.keefers_skyreach->value();
+
+    return c;
   }
 
   double composite_persistent_multiplier( const action_state_t* action_state ) const override
@@ -481,7 +512,8 @@ struct monk_spell_t : public monk_action_t<spell_t>
 
     if ( p()->buff.storm_earth_and_fire->up() )
     {
-      if ( base_t::data().affected_by( p()->spec.storm_earth_and_fire->effectN( 1 ) ) )
+      // TODO: Check in 9.1 that Storm, Earth and Fire effects affect Chi Explosion
+      if ( base_t::data().affected_by( p()->spec.storm_earth_and_fire->effectN( 1 ) ) || base_t::data().id() == 337342 )
       {
         double sef_multiplier = p()->spec.storm_earth_and_fire->effectN( 1 ).percent();
 
@@ -527,6 +559,17 @@ struct monk_heal_t : public monk_action_t<heal_t>
     return m;
   }
 
+  double composite_target_crit_chance( player_t* target ) const override
+  {
+    double c = base_t::composite_target_crit_chance( target );
+
+    if ( td( target )->debuff.keefers_skyreach->up() &&
+         base_t::data().affected_by( td( target )->debuff.keefers_skyreach->data().effectN( 1 ) ) )
+      c += td( target )->debuff.keefers_skyreach->value();
+
+    return c;
+  }
+
   double action_multiplier() const override
   {
     double am = base_t::action_multiplier();
@@ -545,11 +588,15 @@ struct monk_heal_t : public monk_action_t<heal_t>
 
       if ( p()->buff.life_cocoon->up() )
         am *= 1.0 + p()->spec.life_cocoon->effectN( 2 ).percent();
+
+      if ( p()->buff.fae_exposure->up() )
+        am *= 1.0 + p()->passives.fae_exposure_heal->effectN( 1 ).percent();
     }
 
     if ( p()->buff.storm_earth_and_fire->up() )
     {
-      if ( base_t::data().affected_by( p()->spec.storm_earth_and_fire->effectN( 1 ) ) )
+      // TODO: Check in 9.1 that Storm, Earth and Fire effects affect Chi Explosion
+      if ( base_t::data().affected_by( p()->spec.storm_earth_and_fire->effectN( 1 ) ) || base_t::data().id() == 337342 )
       {
         double sef_multiplier = p()->spec.storm_earth_and_fire->effectN( 1 ).percent();
 
@@ -789,15 +836,19 @@ struct monk_melee_attack_t : public monk_action_t<melee_attack_t>
     if ( td( t )->debuff.weapons_of_order->up() )
       m *= 1 + td( t )->debuff.weapons_of_order->stack_value();
 
+    if ( td( t )->debuff.fae_exposure->up() )
+      m *= 1 + p()->passives.fae_exposure_dmg->effectN( 1 ).percent();
+
     return m;
   }
 
   double composite_target_crit_chance( player_t* target ) const override
   {
-    double c = player->composite_player_target_crit_chance( target );
+    double c = base_t::composite_target_crit_chance( target );
 
-    if ( td( target )->debuff.keefers_skyreach->up() )
-      c += td( target )->debuff.keefers_skyreach->value();
+    if ( td( target )->debuff.keefers_skyreach->up() && 
+      base_t::data().affected_by( td( target )->debuff.keefers_skyreach->data().effectN( 1 ) ) )
+        c += td( target )->debuff.keefers_skyreach->value();
 
     return c;
   }
@@ -818,7 +869,8 @@ struct monk_melee_attack_t : public monk_action_t<melee_attack_t>
 
     if ( p()->buff.storm_earth_and_fire->up() )
     {
-      if ( base_t::data().affected_by( p()->spec.storm_earth_and_fire->effectN( 1 ) ) )
+      // TODO: Check in 9.1 that Storm, Earth and Fire effects affect Chi Explosion
+      if ( base_t::data().affected_by( p()->spec.storm_earth_and_fire->effectN( 1 ) ) || base_t::data().id() == 337342 )
       {
         double sef_multiplier = p()->spec.storm_earth_and_fire->effectN( 1 ).percent();
 
@@ -973,6 +1025,7 @@ struct eye_of_the_tiger_dmg_tick_t : public monk_spell_t
     background   = true;
     hasted_ticks = false;
     may_crit = tick_may_crit = true;
+    aoe                      = 1;
     attack_power_mod.direct  = 0;
     attack_power_mod.tick    = data().effectN( 2 ).ap_coeff();
   }
@@ -1010,6 +1063,7 @@ struct tiger_palm_t : public monk_melee_attack_t
     ww_mastery       = true;
     may_combo_strike = true;
     trigger_chiji    = true;
+    trigger_faeline_stomp = true;
     sef_ability      = SEF_TIGER_PALM;
 
     add_child( eye_of_the_tiger_damage );
@@ -1116,14 +1170,7 @@ struct tiger_palm_t : public monk_melee_attack_t
     if ( p()->specialization() == MONK_BREWMASTER && td( s->target )->debuff.bonedust_brew->up() )
       brew_cooldown_reduction( p()->covenant.necrolord->effectN( 3 ).base_value() );
 
-    if ( p()->legendary.keefers_skyreach->ok() )
-    {
-      if ( !td( s->target )->debuff.recently_rushing_tiger_palm->up() )
-      {
-        td( s->target )->debuff.keefers_skyreach->trigger();
-        td( s->target )->debuff.recently_rushing_tiger_palm->trigger();
-      }
-    }
+    p()->trigger_keefers_skyreach( s );
     shaohoas_might = false;
   }
 };
@@ -1143,7 +1190,8 @@ struct rising_sun_kick_dmg_t : public monk_melee_attack_t
 
     background = dual = true;
     may_crit          = true;
-    trigger_chiji     = true;
+    trigger_chiji         = true;
+    trigger_faeline_stomp = true;
 
     if ( p->specialization() == MONK_WINDWALKER )
       ap_type         = attack_power_type::WEAPON_BOTH;
@@ -1239,7 +1287,8 @@ struct rising_sun_kick_t : public monk_melee_attack_t
   {
     parse_options( options_str );
 
-    may_combo_strike     = true;
+    may_combo_strike      = true;
+    trigger_faeline_stomp = true;
     sef_ability          = SEF_RISING_SUN_KICK;
     affected_by.serenity = true;
     ap_type              = attack_power_type::NONE;
@@ -1399,7 +1448,8 @@ struct blackout_kick_t : public monk_melee_attack_t
     parse_options( options_str );
     sef_ability      = SEF_BLACKOUT_KICK;
     may_combo_strike = true;
-    trigger_chiji    = true;
+    trigger_chiji         = true;
+    trigger_faeline_stomp = true;
 
     switch ( p->specialization() )
     {
@@ -1571,7 +1621,8 @@ struct rushing_jade_wind_t : public monk_melee_attack_t
   {
     parse_options( options_str );
     sef_ability      = SEF_RUSHING_JADE_WIND;
-    may_combo_strike = true;
+    may_combo_strike      = true;
+    trigger_faeline_stomp = true;
     gcd_type         = gcd_haste_type::NONE;
 
     // Set dot data to 0, since we handle everything through the buff.
@@ -1623,13 +1674,6 @@ struct chi_explosion_t : public monk_spell_t
 
     return am;
   }
-
-  void execute() override
-  {
-    monk_spell_t::execute();
-
-    p()->buff.chi_energy->expire();
-  }
 };
 
 struct sck_tick_action_t : public monk_melee_attack_t
@@ -1639,8 +1683,7 @@ struct sck_tick_action_t : public monk_melee_attack_t
   sck_tick_action_t( util::string_view name, monk_t* p, const spell_data_t* data )
     : monk_melee_attack_t( name, p, data ), charred_passions( new charred_passions_t( p ) )
   {
-    if ( !p->bugs )
-      ww_mastery    = true;
+    ww_mastery    = true;
     trigger_chiji = true;
 
     dual = background = true;
@@ -1722,6 +1765,20 @@ struct sck_tick_action_t : public monk_melee_attack_t
 
 struct spinning_crane_kick_t : public monk_melee_attack_t
 {
+  struct spinning_crane_kick_state_t : public action_state_t
+  {
+    spinning_crane_kick_state_t( action_t* a, player_t* target ) : action_state_t( a, target )
+    {
+    }
+
+    proc_types2 cast_proc_type2() const override
+    {
+      // Spinning Crane Kick seems to trigger Bron's Call to Action (and possibly other
+      // effects that care about casts).
+      return PROC2_CAST;
+    }
+  };
+
   chi_explosion_t* chi_x;
 
   spinning_crane_kick_t( monk_t* p, util::string_view options_str )
@@ -1733,9 +1790,10 @@ struct spinning_crane_kick_t : public monk_melee_attack_t
     parse_options( options_str );
 
     sef_ability      = SEF_SPINNING_CRANE_KICK;
-    may_combo_strike = true;
+    may_combo_strike      = true;
+    trigger_faeline_stomp = true;
 
-    may_crit = may_miss = may_block = may_dodge = may_parry = callbacks = false;
+    may_crit = may_miss = may_block = may_dodge = may_parry = false;
     tick_zero = hasted_ticks = channeled = interrupt_auto_attack = true;
 
     spell_power_mod.direct = 0.0;
@@ -1745,6 +1803,11 @@ struct spinning_crane_kick_t : public monk_melee_attack_t
         new sck_tick_action_t( "spinning_crane_kick_tick", p, p->spec.spinning_crane_kick->effectN( 1 ).trigger() );
 
     chi_x = new chi_explosion_t( p );
+  }
+
+  action_state_t* new_state() override
+  {
+    return new spinning_crane_kick_state_t( this, p()->target );
   }
 
   // N full ticks, but never additional ones.
@@ -1829,6 +1892,9 @@ struct spinning_crane_kick_t : public monk_melee_attack_t
 
     if ( p()->buff.dance_of_chiji_hidden->up() )
       p()->buff.dance_of_chiji_hidden->expire();
+
+    if ( p()->buff.chi_energy->up() )
+      p()->buff.chi_energy->expire();
   }
 };
 
@@ -1889,7 +1955,8 @@ struct fists_of_fury_t : public monk_melee_attack_t
     parse_options( options_str );
 
     sef_ability          = SEF_FISTS_OF_FURY;
-    may_combo_strike     = true;
+    may_combo_strike      = true;
+    trigger_faeline_stomp = true;
     affected_by.serenity = true;
 
     channeled = tick_zero = true;
@@ -1961,10 +2028,12 @@ struct fists_of_fury_t : public monk_melee_attack_t
 
 struct whirling_dragon_punch_tick_t : public monk_melee_attack_t
 {
-  whirling_dragon_punch_tick_t( util::string_view name, monk_t* p, const spell_data_t* s )
-    : monk_melee_attack_t( name, p, s )
+  timespan_t delay;
+  whirling_dragon_punch_tick_t( util::string_view name, monk_t* p, const spell_data_t* s, timespan_t delay )
+    : monk_melee_attack_t( name, p, s ), delay( delay )
   {
     ww_mastery = true;
+    trigger_faeline_stomp = true;
 
     background = true;
     aoe        = -1;
@@ -1975,20 +2044,72 @@ struct whirling_dragon_punch_tick_t : public monk_melee_attack_t
 
 struct whirling_dragon_punch_t : public monk_melee_attack_t
 {
+  struct whirling_dragon_punch_state_t : public action_state_t
+  {
+    whirling_dragon_punch_state_t( action_t* a, player_t* target ) : action_state_t( a, target )
+    {
+    }
+
+    proc_types2 cast_proc_type2() const override
+    {
+      // Whirling Dragon Punch seems to trigger Bron's Call to Action (and possibly other
+      // effects that care about casts).
+      return PROC2_CAST;
+    }
+  };
+
+  whirling_dragon_punch_tick_t* ticks[3];
+
+  struct whirling_dragon_punch_tick_event_t : public event_t
+  {
+    whirling_dragon_punch_tick_t* tick;
+
+    whirling_dragon_punch_tick_event_t( whirling_dragon_punch_tick_t* tick, timespan_t delay )
+        : event_t( *tick->player, delay ), tick( tick )
+    {
+    }
+
+    void execute() override
+    {
+      tick->execute();
+    }
+  };
+
   whirling_dragon_punch_t( monk_t* p, util::string_view options_str )
     : monk_melee_attack_t( "whirling_dragon_punch", p, p->talent.whirling_dragon_punch )
   {
     sef_ability = SEF_WHIRLING_DRAGON_PUNCH;
 
     parse_options( options_str );
-    interrupt_auto_attack = callbacks = false;
-    channeled                         = true;
+    interrupt_auto_attack             = false;
+    channeled                         = false;
     may_combo_strike                  = true;
+    trigger_faeline_stomp             = true;
 
     spell_power_mod.direct = 0.0;
 
-    tick_action =
-        new whirling_dragon_punch_tick_t( "whirling_dragon_punch_tick", p, p->passives.whirling_dragon_punch_tick );
+    // 3 server-side hardcoded ticks
+    for ( size_t i = 0; i < 3; ++i )
+    {
+      auto delay = base_tick_time * i;
+      ticks[i] = 
+        new whirling_dragon_punch_tick_t( "whirling_dragon_punch_tick", p, p->passives.whirling_dragon_punch_tick, delay );
+    }
+  }
+
+  action_state_t* new_state() override
+  {
+    return new whirling_dragon_punch_state_t( this, p()->target );
+  }
+
+  void execute() override
+  {
+    monk_melee_attack_t::execute();
+
+    for ( auto& tick : ticks )
+    {
+      make_event<whirling_dragon_punch_tick_event_t>( *sim, tick, tick->delay );
+    }
   }
 
   bool ready() override
@@ -1998,14 +2119,6 @@ struct whirling_dragon_punch_t : public monk_melee_attack_t
       return monk_melee_attack_t::ready();
 
     return false;
-  }
-
-  timespan_t composite_dot_duration( const action_state_t* s ) const override
-  {
-    // WDP has an automatic "tick_on_application" flag set which is causing a tick zero application.
-    // have to set the duration at 2 ticks since the first of the 3 ticks happens at tick zero.
-    timespan_t tt = tick_time( s );
-    return tt * 2;
   }
 };
 
@@ -2022,7 +2135,8 @@ struct fist_of_the_white_tiger_main_hand_t : public monk_melee_attack_t
     : monk_melee_attack_t( name, p, s )
   {
     sef_ability = SEF_FIST_OF_THE_WHITE_TIGER;
-    ww_mastery  = true;
+    ww_mastery            = true;
+    trigger_faeline_stomp = true;
 
     may_dodge = may_parry = may_block = may_miss = true;
     dual                                         = true;
@@ -2040,7 +2154,8 @@ struct fist_of_the_white_tiger_t : public monk_melee_attack_t
   {
     sef_ability          = SEF_FIST_OF_THE_WHITE_TIGER_OH;
     ww_mastery           = true;
-    may_combo_strike     = true;
+    may_combo_strike      = true;
+    trigger_faeline_stomp = true;
     affected_by.serenity = false;
     cooldown->hasted     = false;
     ap_type              = attack_power_type::WEAPON_BOTH;
@@ -2206,6 +2321,7 @@ struct keg_smash_t : public monk_melee_attack_t
     parse_options( options_str );
 
     aoe = -1;
+    trigger_faeline_stomp = true;
 
     attack_power_mod.direct = p.spec.keg_smash->effectN( 2 ).ap_coeff();
     radius                  = p.spec.keg_smash->effectN( 2 ).radius();
@@ -2297,6 +2413,7 @@ struct touch_of_death_t : public monk_melee_attack_t
     ww_mastery              = true;
     may_crit = hasted_ticks = false;
     may_combo_strike        = true;
+    trigger_faeline_stomp   = true;
     parse_options( options_str );
     cooldown->duration = data().cooldown();
 
@@ -2779,6 +2896,7 @@ struct crackling_jade_lightning_t : public monk_spell_t
   {
     sef_ability      = SEF_CRACKLING_JADE_LIGHTNING;
     may_combo_strike = true;
+    trigger_faeline_stomp = true;
 
     parse_options( options_str );
 
@@ -2884,7 +3002,8 @@ struct breath_of_fire_t : public monk_spell_t
     parse_options( options_str );
     gcd_type = gcd_haste_type::NONE;
 
-    aoe = 1;
+    aoe                   = 1;
+    trigger_faeline_stomp = true;
 
     add_child( p.active_actions.breath_of_fire );
   }
@@ -3648,12 +3767,53 @@ struct weapons_of_order_t : public monk_spell_t
       p()->cooldown.keg_smash->reset( true, 1 );
 
     monk_spell_t::execute();
+
+    if ( p()->legendary.call_to_arms->ok() )
+    {
+      switch ( p()->specialization() )
+      {
+        case MONK_BREWMASTER:
+          p()->pets.niuzao->summon( p()->legendary.call_to_arms->effectN( 1 ).time_value() );
+          break;
+        case MONK_MISTWEAVER:
+          p()->pets.yulon->summon( p()->legendary.call_to_arms->effectN( 1 ).time_value() );
+          break;
+        case MONK_WINDWALKER:
+          p()->pets.xuen->summon( p()->legendary.call_to_arms->effectN( 1 ).time_value() );
+          break;
+      }
+    }
   }
 };
 
 // ==========================================================================
 // Bonedust Brew - Necrolord Covenant Ability
 // ==========================================================================
+struct bountiful_brew_t : public monk_spell_t
+{
+  bountiful_brew_t( monk_t& p )
+    : monk_spell_t( "bountiful_brew", &p, p.legendary.bountiful_brew )
+  {
+    harmful            = false;
+    cooldown->duration = timespan_t::zero();
+    aoe                = -1;
+    base_dd_min        = 0;
+    base_dd_max        = 0;
+  }
+
+  void execute() override
+  {
+    p()->buff.bonedust_brew_hidden->trigger();
+    monk_spell_t::execute();
+  }
+
+  void impact( action_state_t* s ) override
+  {
+    monk_spell_t::impact( s );
+
+    td( s->target )->debuff.bonedust_brew->trigger();
+  }
+};
 
 struct bonedust_brew_t : public monk_spell_t
 {
@@ -3778,6 +3938,9 @@ struct faeline_stomp_damage_t : public monk_spell_t
     monk_spell_t::impact( s );
 
     td( s->target )->debuff.faeline_stomp->trigger();
+
+    if ( p()->legendary.faeline_harmony->ok() )
+      td( s->target )->debuff.fae_exposure->trigger();
   }
 };
 
@@ -3966,6 +4129,26 @@ struct fallen_order_t : public monk_spell_t
             fallen_monks.push_back( std::make_pair( MONK_BREWMASTER, summon_duration ) );
           break;
         }
+        default:
+          break;
+      }
+    }
+
+    p()->buff.fallen_order->trigger();
+
+    if ( p()->legendary.sinister_teachings->ok() )
+    {
+      switch ( spec )
+      {
+        case MONK_BREWMASTER:
+          p()->pets.fallen_monk_brm.spawn( timespan_t::from_seconds( p()->legendary.sinister_teachings->effectN( 2 ).base_value() ), 1 );
+          break;
+        case MONK_MISTWEAVER:
+          p()->pets.fallen_monk_mw.spawn( timespan_t::from_seconds( p()->legendary.sinister_teachings->effectN( 2 ).base_value() ), 1 );
+          break;
+        case MONK_WINDWALKER:
+          p()->pets.fallen_monk_ww.spawn( timespan_t::from_seconds( p()->legendary.sinister_teachings->effectN( 2 ).base_value() ), 1 );
+          break;
         default:
           break;
       }
@@ -4433,7 +4616,7 @@ struct expel_harm_t : public monk_heal_t
     if ( p()->buff.gift_of_the_ox->up() && p()->spec.expel_harm_2_brm->ok() )
     {
       double goto_heal = p()->passives.gift_of_the_ox_heal->effectN( 1 ).ap_coeff();
-      goto_heal *= p()->buff.gift_of_the_ox->stack();
+      goto_heal *= p()->buff.gift_of_the_ox->check();
       result += goto_heal;
     }
 
@@ -4441,7 +4624,7 @@ struct expel_harm_t : public monk_heal_t
     dmg->base_dd_max = result;
     dmg->execute();
 
-    for ( int i = 0; i < p()->buff.gift_of_the_ox->stack(); i++ )
+    for ( int i = 0; i < p()->buff.gift_of_the_ox->check(); i++ )
     {
       p()->buff.gift_of_the_ox->decrement();
     }
@@ -4540,7 +4723,8 @@ struct chi_wave_t : public monk_spell_t
       dmg( true )
   {
     sef_ability      = SEF_CHI_WAVE;
-    may_combo_strike = true;
+    may_combo_strike      = true;
+    trigger_faeline_stomp = true;
     parse_options( options_str );
     hasted_ticks = harmful = false;
     cooldown->hasted       = false;
@@ -4581,9 +4765,11 @@ struct chi_burst_heal_t : public monk_heal_t
 {
   chi_burst_heal_t( monk_t& player ) : monk_heal_t( "chi_burst_heal", player, player.passives.chi_burst_heal )
   {
-    background = true;
+    background            = true;
+    trigger_faeline_stomp = true;
     target     = p();
-    aoe        = -1;
+    // If we are using the user option, each heal just heals 1 target, otherwise use the old SimC code
+    aoe        = ( p()->user_options.chi_burst_healing_targets > 1 ? 1 : -1 );
   }
 };
 
@@ -4594,7 +4780,8 @@ struct chi_burst_damage_t : public monk_spell_t
     : monk_spell_t( "chi_burst_damage", &player, player.passives.chi_burst_damage ), num_hit( 0 )
   {
     background = true;
-    ww_mastery = true;
+    ww_mastery            = true;
+    trigger_faeline_stomp = true;
     aoe        = -1;
   }
 
@@ -4627,7 +4814,8 @@ struct chi_burst_t : public monk_spell_t
     : monk_spell_t( "chi_burst", player, player->talent.chi_burst ), heal( nullptr )
   {
     parse_options( options_str );
-    may_combo_strike = true;
+    may_combo_strike      = true;
+    trigger_faeline_stomp = true;
     heal             = new chi_burst_heal_t( *player );
     heal->stats      = stats;
     damage           = new chi_burst_damage_t( *player );
@@ -4652,7 +4840,15 @@ struct chi_burst_t : public monk_spell_t
   {
     monk_spell_t::execute();
 
-    heal->execute();
+    // AoE healing is wonky in SimC. Try to simulate healing multiple players without over burdening sims
+    if ( p()->user_options.chi_burst_healing_targets > 1 )
+    {
+      int healing_targets = p()->user_options.chi_burst_healing_targets;
+      for ( int i = 0; i < healing_targets; i++ )
+        heal->execute();
+    }
+    else
+      heal->execute();
     damage->execute();
   }
 };
@@ -4923,8 +5119,8 @@ struct fortifying_brew_t : public monk_buff_t<buff_t>
       // The tooltip is hard-coded with 20% if Brewmaster Rank 2 is activated
       // Currently it's bugged and giving 17.39% HP instead of the intended 20%
       // The intended calculation is:
-      // health_multiplier = health_multiplier * ( 0.20 * ( 1 / (1 + health_multiplier ) ) );
-      health_multiplier = 0.20 * ( 1 / ( 1 + health_multiplier ) );
+      // health_multiplier = ( 1 + health_multiplier ) * p().passives.fortifying_brew->effectN( 5 ).percent() * ( 1 / ( 1 + health_multiplier ) );
+      health_multiplier = p().passives.fortifying_brew->effectN( 5 ).percent() * ( 1 / ( 1 + health_multiplier ) );
     }
 
     // Extra Health is set by current max_health, doesn't change when max_health changes.
@@ -5320,11 +5516,15 @@ monk_td_t::monk_td_t( player_t* target, monk_t* p ) : actor_target_data_t( targe
       make_buff( *this, "weapons_of_order_debuff", p->find_spell( 312106 ) )->set_default_value_from_effect( 1 );
 
   // Shadowland Legendary
+  debuff.fae_exposure = make_buff( *this, "fae_exposure_damage", p->passives.fae_exposure_dmg )
+                            ->set_default_value_from_effect( 1 )
+                            ->add_invalidate( CACHE_PLAYER_DAMAGE_MULTIPLIER )
+                            ->add_invalidate( CACHE_PLAYER_HEAL_MULTIPLIER );
   debuff.keefers_skyreach = make_buff( *this, "keefers_skyreach", p->find_spell( 344021 ) )
                                 ->set_default_value_from_effect( 1 )
                                 ->add_invalidate( CACHE_ATTACK_CRIT_CHANCE )
                                 ->set_refresh_behavior( buff_refresh_behavior::NONE );
-  debuff.recently_rushing_tiger_palm = make_buff( *this, "recently_rushing_tiger_palm", p->find_spell( 337341 ) )
+  debuff.skyreach_exhaustion = make_buff( *this, "skyreach_exhaustion", p->find_spell( 337341 ) )
                                            ->set_refresh_behavior( buff_refresh_behavior::NONE );
 
   debuff.storm_earth_and_fire = make_buff( *this, "storm_earth_and_fire_target" )->set_cooldown( timespan_t::zero() );
@@ -5352,6 +5552,7 @@ monk_t::monk_t( sim_t* sim, util::string_view name, race_e r )
     mastery(),
     cooldown(),
     passives(),
+    rppm(),
     covenant(),
     conduit(),
     legendary(),
@@ -5404,6 +5605,7 @@ monk_t::monk_t( sim_t* sim, util::string_view name, race_e r )
   user_options.initial_chi              = 1;
   user_options.expel_harm_effectiveness = 1.0;
   user_options.faeline_stomp_uptime     = 1.0;
+  user_options.chi_burst_healing_targets = 1;
 }
 
 // monk_t::create_action ====================================================
@@ -5571,6 +5773,18 @@ void monk_t::trigger_mark_of_the_crane( action_state_t* s )
   if ( get_target_data( s->target )->debuff.mark_of_the_crane->up() ||
        mark_of_the_crane_counter() < as<int>( passives.cyclone_strikes->max_stacks() ) )
     get_target_data( s->target )->debuff.mark_of_the_crane->trigger();
+}
+
+void monk_t::trigger_keefers_skyreach( action_state_t* s )
+{
+  if ( legendary.keefers_skyreach->ok() )
+  {
+    if ( !get_target_data( s->target )->debuff.skyreach_exhaustion->up() )
+    {
+      get_target_data( s->target )->debuff.keefers_skyreach->trigger();
+      get_target_data( s->target )->debuff.skyreach_exhaustion->trigger();
+    }
+  }
 }
 
 player_t* monk_t::next_mark_of_the_crane_target( action_state_t* state )
@@ -5823,6 +6037,7 @@ void monk_t::init_spells()
   spec.renewing_mist              = find_specialization_spell( "Renewing Mist" );
   spec.renewing_mist_2            = find_rank_spell( "Renewing Mist", "Rank 2" );
   spec.revival                    = find_specialization_spell( "Revival" );
+  spec.revival_2                  = find_rank_spell( "Revival", "Rank 2" );
   spec.soothing_mist              = find_specialization_spell( "Soothing Mist" );
   spec.teachings_of_the_monastery = find_specialization_spell( "Teachings of the Monastery" );
   spec.thunder_focus_tea          = find_specialization_spell( "Thunder Focus Tea" );
@@ -5920,6 +6135,12 @@ void monk_t::init_spells()
   legendary.last_emperors_capacitor = find_runeforge_legendary( "Last Emperor's Capacitor" );
   legendary.xuens_battlegear        = find_runeforge_legendary( "Xuen's Treasure" );
 
+  // Covenant
+  legendary.bountiful_brew       = find_runeforge_legendary( "Bountiful Brew" );
+  legendary.call_to_arms         = find_runeforge_legendary( "Call to Arms" );
+  legendary.faeline_harmony      = find_runeforge_legendary( "Faeline Harmony" );
+  legendary.sinister_teachings   = find_runeforge_legendary( "Sinister Teachings" );
+
   // Passives =========================================
   // General
   passives.aura_monk        = find_spell( 137022 );
@@ -5994,7 +6215,9 @@ void monk_t::init_spells()
 
   // Shadowland Legendary
   passives.chi_explosion        = find_spell( 337342 );
-  passives.shaohaos_might            = find_spell( 337570 );
+  passives.fae_exposure_dmg     = find_spell( 356773 );
+  passives.fae_exposure_heal    = find_spell( 356774 );
+  passives.shaohaos_might       = find_spell( 337570 );
   passives.charred_passions_dmg = find_spell( 338141 );
 
   // Mastery spells =========================================
@@ -6030,6 +6253,9 @@ void monk_t::init_spells()
   // Covenant
   active_actions.bonedust_brew_dmg  = new actions::spells::bonedust_brew_damage_t( *this );
   active_actions.bonedust_brew_heal = new actions::spells::bonedust_brew_heal_t( *this );
+
+  // Legendary
+  active_actions.bountiful_brew = new actions::spells::bountiful_brew_t( *this );
 }
 
 // monk_t::init_base ========================================================
@@ -6304,6 +6530,8 @@ void monk_t::create_buffs()
 
   buff.faeline_stomp_reset = make_buff( this, "faeline_stomp_reset", find_spell( 327276 ) );
 
+  buff.fallen_order = make_buff( this, "fallen_order", find_spell( 326860 ) );
+
   // Covenant Conduits
   buff.fortifying_ingrediences = make_buff<absorb_buff_t>( this, "fortifying_ingredients", find_spell( 336874 ) );
   buff.fortifying_ingrediences->set_absorb_source( get_stats( "fortifying_ingredients" ) )
@@ -6333,6 +6561,10 @@ void monk_t::create_buffs()
 
   buff.the_emperors_capacitor =
       make_buff( this, "the_emperors_capacitor", find_spell( 337291 ) )->set_default_value_from_effect( 1 );
+
+  // Covenants
+  buff.fae_exposure =
+      make_buff( this, "fae_exposure_heal", passives.fae_exposure_heal )->set_default_value_from_effect( 1 );
 }
 
 // monk_t::init_gains =======================================================
@@ -6389,6 +6621,15 @@ void monk_t::init_assessors()
     accumulate_gale_burst_damage( s );
     return assessor::CONTINUE;
   } );
+}
+
+// monk_t::init_rng =======================================================
+
+void monk_t::init_rng()
+{
+  player_t::init_rng();
+  if ( legendary.bountiful_brew->ok() )
+    rppm.bountiful_brew = get_rppm( "bountiful_brew", find_spell( 356592 ) );
 }
 
 // monk_t::reset ============================================================
@@ -6825,11 +7066,22 @@ void monk_t::create_options()
 {
   base_t::create_options();
 
-  add_option( opt_int( "initial_chi", user_options.initial_chi ) );
-  add_option(
-      opt_float( "memory_of_lucid_dreams_proc_chance", user_options.memory_of_lucid_dreams_proc_chance, 0.0, 1.0 ) );
+  //add_option( opt_deprecated( "initial_chi", "monk.initial_chi" ) );
+  //add_option( opt_deprecated( "memory_of_lucid_dreams_proc_chance", "monk.memory_of_lucid_dreams_proc_chance" ) );
+  //add_option( opt_deprecated( "expel_harm_effectiveness", "monk.expel_harm_effectiveness" ) );
+  //add_option( opt_deprecated( "faeline_stomp_uptime", "monk.faeline_stomp_uptime" ) );
+  //add_option( opt_deprecated( "chi_burst_healing_targets", "monk.chi_burst_healing_targets" ) );
+
+  add_option( opt_int( "initial_chi", user_options.initial_chi, 0, 6 ) );
+  add_option( opt_int( "monk.initial_chi", user_options.initial_chi, 0, 6 ) );
+  add_option( opt_float( "memory_of_lucid_dreams_proc_chance", user_options.memory_of_lucid_dreams_proc_chance, 0.0, 1.0 ) );
+  add_option( opt_float( "monk.memory_of_lucid_dreams_proc_chance", user_options.memory_of_lucid_dreams_proc_chance, 0.0, 1.0 ) );
   add_option( opt_float( "expel_harm_effectiveness", user_options.expel_harm_effectiveness, 0.0, 1.0 ) );
+  add_option( opt_float( "monk.expel_harm_effectiveness", user_options.expel_harm_effectiveness, 0.0, 1.0 ) );
   add_option( opt_float( "faeline_stomp_uptime", user_options.faeline_stomp_uptime, 0.0, 1.0 ) );
+  add_option( opt_float( "monk.faeline_stomp_uptime", user_options.faeline_stomp_uptime, 0.0, 1.0 ) );
+  add_option( opt_int( "chi_burst_healing_targets", user_options.chi_burst_healing_targets, 0, 30 ) );
+  add_option( opt_int( "monk.chi_burst_healing_targets", user_options.chi_burst_healing_targets, 0, 30 ) );
 }
 
 // monk_t::copy_from =========================================================
@@ -7049,6 +7301,11 @@ void monk_t::target_mitigation( school_e school, result_amount_type dt, action_s
   if ( s->action->id == passives.stagger_self_damage->id() )
   {
     return;
+  }
+
+  if ( spec.brewmasters_balance->ok() )
+  {
+    s->result_amount *= 1.0 + spec.brewmasters_balance->effectN( 2 ).percent();
   }
 
   // Diffuse Magic

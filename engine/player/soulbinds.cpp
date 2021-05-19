@@ -4,18 +4,19 @@
 // ==========================================================================
 #include "soulbinds.hpp"
 
-#include "player/actor_target_data.hpp"
-#include "player/unique_gear_helper.hpp"
-#include "player/pet.hpp"
-
 #include "action/dot.hpp"
-
+#include "action/sc_action_state.hpp"
 #include "item/item.hpp"
-
-#include "sim/sc_sim.hpp"
+#include "player/actor_target_data.hpp"
+#include "player/covenant.hpp"
+#include "player/pet.hpp"
+#include "player/unique_gear_helper.hpp"
 #include "sim/sc_cooldown.hpp"
+#include "sim/sc_sim.hpp"
 
 #include <regex>
+
+#include "simulationcraft.hpp"
 
 namespace covenant
 {
@@ -263,13 +264,19 @@ void grove_invigoration( special_effect_t& effect )
   if ( unique_gear::create_fallback_buffs( effect, { "redirected_anima" } ) )
     return;
 
-  effect.custom_buff = buff_t::find( effect.player, "redirected_anima" );
-  if ( !effect.custom_buff )
+  auto buff = buff_t::find( effect.player, "redirected_anima" );
+
+  if ( !buff )
   {
-    effect.custom_buff =
-      make_buff<stat_buff_t>( effect.player, "redirected_anima", effect.player->find_spell( 342814 ) )
-        ->set_stack_behavior( buff_stack_behavior::ASYNCHRONOUS );
+    buff = make_buff<stat_buff_t>( effect.player, "redirected_anima", effect.player->find_spell( 342814 ) )
+             ->set_stack_behavior( buff_stack_behavior::ASYNCHRONOUS )
+             ->set_default_value_from_effect( 1 )  // default value is used to hold the hp %
+             ->set_stack_change_callback( [ effect ] ( buff_t*, int /* old */, int /* cur */ )
+               { effect.player->recalculate_resource_max( RESOURCE_HEALTH ); } );
   }
+
+  effect.player->buffs.redirected_anima = buff;
+  effect.custom_buff = buff;
 
   new dbc_proc_callback_t( effect.player, effect );
 
@@ -278,7 +285,74 @@ void grove_invigoration( special_effect_t& effect )
 
   int stacks = as<int>( effect.driver()->effectN( 3 ).base_value() * stack_mod );
 
-  add_covenant_cast_callback<covenant_cb_buff_t>( effect.player, effect.custom_buff, stacks );
+  add_covenant_cast_callback<covenant_cb_buff_t>( effect.player, buff, stacks );
+}
+
+void bonded_hearts( special_effect_t& effect )
+{
+  auto buff = buff_t::find( effect.player, "bonded_hearts" );
+  if ( !buff )
+  {
+    buff = make_buff( effect.player, "bonded_hearts", effect.player->find_spell( 352881 ) )
+               ->add_invalidate( CACHE_MASTERY )
+               ->set_default_value_from_effect( 1 );
+
+    buff->set_stack_change_callback( [ effect ]( buff_t* b, int, int new_ ) {
+      auto ra  = debug_cast<stat_buff_t*>( effect.player->buffs.redirected_anima );
+      auto mul = 1.0 + b->default_value;
+
+      // In stat_buff_t::bump, the stat value is applied AFTER buff_t::stack_change_callback is triggered, so the
+      // sequence will be:
+      //  1. redirected_anima is triggered
+      //  2. bonded_hearts is triggered via stack_change_callback on redirected_anima
+      //  3. the stat value of redirected_anima is applied
+      // This means that when bonded_hearts is triggered, the amount will be adjusted before the stat buff is applied,
+      // so we don't need to do any manual adjusting of the stat buff amoutn. But when bonded_hearts ends, we will
+      // need to manually recalculate and update the stat buff amount.
+      if ( new_ )
+      {
+        for ( auto& s : ra->stats )
+        {
+          s.amount *= mul;
+        }
+
+        ra->default_value *= mul;
+      }
+      else
+      {
+        for ( auto& s : ra->stats )
+        {
+          s.amount /= mul;
+
+          double delta = s.amount * ra->current_stack - s.current_value;
+
+          if ( delta > 0 )
+            b->player->stat_gain( s.stat, delta, ra->stat_gain, nullptr, ra->buff_duration() > 0_ms );
+          else if ( delta < 0 )
+            b->player->stat_loss( s.stat, std::fabs( delta ), ra->stat_gain, nullptr, ra->buff_duration() > 0_ms );
+
+          s.current_value += delta;
+        }
+
+        ra->default_value /= mul;
+      }
+
+      effect.player->recalculate_resource_max( RESOURCE_HEALTH );
+    } );
+  }
+
+  effect.player->register_on_arise_callback( effect.player, [ effect, buff ]() {
+    auto ra = effect.player->buffs.redirected_anima;
+    if ( ra )
+    {
+      ra->set_stack_change_callback( [ buff ]( buff_t*, int old_, int new_ ) {
+        if ( new_ > old_ && buff->rng().roll( buff->sim->shadowlands_opts.bonded_hearts_other_covenant_chance ) )
+          buff->trigger();
+
+        buff->player->recalculate_resource_max( RESOURCE_HEALTH );
+      } );
+    }
+  } );
 }
 
 void field_of_blossoms( special_effect_t& effect )
@@ -335,8 +409,32 @@ void social_butterfly( special_effect_t& effect )
   effect.player->register_combat_begin( buff );
 }
 
+void dream_delver( special_effect_t& effect )
+{
+  struct dream_delver_cb_t : public dbc_proc_callback_t
+  {
+    dream_delver_cb_t( const special_effect_t& e ) : dbc_proc_callback_t( e.player, e )
+    {}
+
+    void execute( action_t* a, action_state_t* s ) override
+    {
+      dbc_proc_callback_t::execute( a, s );
+
+      auto td = a->player->get_target_data( s->target );
+      td->debuff.dream_delver->trigger();
+    }
+  };
+
+  effect.proc_flags2_ = PF2_ALL_HIT | PF2_PERIODIC_DAMAGE;
+
+  new dream_delver_cb_t( effect );
+}
+
 void first_strike( special_effect_t& effect )
 {
+  if ( unique_gear::create_fallback_buffs( effect, { "first_strike" } ) )
+    return;
+
   struct first_strike_cb_t : public dbc_proc_callback_t
   {
     std::vector<int> target_list;
@@ -442,12 +540,43 @@ void thrill_seeker( special_effect_t& effect )
                        ->set_tick_behavior( buff_tick_behavior::NONE );
   }
 
+  struct euphoria_buff_t : public buff_t
+  {
+    euphoria_buff_t( player_t* p ) : buff_t( p, "euphoria", p->find_spell( 331937 ) )
+    {
+      set_default_value_from_effect_type( A_HASTE_ALL );
+      set_pct_buff_type( STAT_PCT_BUFF_HASTE );
+    }
+
+    void expire_override( int s, timespan_t d ) override
+    {
+      buff_t::expire_override( s, d );
+
+      auto crit = player->cache.spell_crit_chance();
+      auto vers = player->cache.damage_versatility();
+
+      // TODO: implement what happens if vers = crit
+      if ( crit > vers )
+      {
+        if ( player->buffs.fatal_flaw_crit )
+        {
+          player->buffs.fatal_flaw_crit->trigger();
+        }
+      }
+      else if ( vers > crit )
+      {
+        if ( player->buffs.fatal_flaw_vers )
+        {
+          player->buffs.fatal_flaw_vers->trigger();
+        }
+      }
+    }
+  };
+
   auto buff = buff_t::find( effect.player, "euphoria" );
   if ( !buff )
   {
-    buff = make_buff( effect.player, "euphoria", effect.player->find_spell( 331937 ) )
-               ->set_default_value_from_effect_type( A_HASTE_ALL )
-               ->set_pct_buff_type( STAT_PCT_BUFF_HASTE );
+    buff = make_buff<euphoria_buff_t>( effect.player );
 
     counter_buff->set_stack_change_callback( [ buff ]( buff_t* b, int, int ) {
       if ( b->at_max_stacks() )
@@ -501,6 +630,29 @@ void thrill_seeker( special_effect_t& effect )
   } );
 }
 
+// Critical Strike - 354053
+// Versatility - 354054
+void fatal_flaw( special_effect_t& effect )
+{
+  auto crit_buff = buff_t::find( effect.player, "fatal_flaw_crit" );
+  auto vers_buff = buff_t::find( effect.player, "fatal_flaw_vers" );
+  if ( !crit_buff )
+  {
+    crit_buff = make_buff( effect.player, "fatal_flaw_crit", effect.player->find_spell( 354053 ) )
+                    ->set_default_value_from_effect_type( A_MOD_ALL_CRIT_CHANCE )
+                    ->set_pct_buff_type( STAT_PCT_BUFF_CRIT );
+  }
+  if ( !vers_buff )
+  {
+    vers_buff = make_buff( effect.player, "fatal_flaw_vers", effect.player->find_spell( 354054 ) )
+                    ->set_default_value_from_effect_type( A_MOD_VERSATILITY_PCT )
+                    ->set_pct_buff_type( STAT_PCT_BUFF_VERSATILITY );
+  }
+
+  effect.player->buffs.fatal_flaw_crit = crit_buff;
+  effect.player->buffs.fatal_flaw_vers = vers_buff;
+}
+
 void soothing_shade( special_effect_t& effect )
 {
   auto buff = buff_t::find( effect.player, "soothing_shade" );
@@ -533,6 +685,73 @@ void wasteland_propriety( special_effect_t& effect )
   }
 
   add_covenant_cast_callback<covenant_cb_buff_t>( effect.player, buff );
+}
+
+// 354017 - Critical Strike
+// 353266 - Primary Stat
+// 354016 - Haste
+// 354018 - Versatility
+void party_favors( special_effect_t& effect )
+{
+  auto opt_str = effect.player->sim->shadowlands_opts.party_favor_type;
+  if ( util::str_compare_ci( opt_str, "none" ) )
+    return;
+
+  buff_t* buff;
+
+  // TODO: Figure out if you can have multiple buffs at a time
+  if ( util::str_compare_ci( opt_str, "haste" ) )
+  {
+    buff = buff_t::find( effect.player, "the_mad_dukes_tea_haste" );
+    if ( !buff )
+    {
+      buff = make_buff<stat_buff_t>( effect.player, "the_mad_dukes_tea_haste", effect.player->find_spell( 354016 ) )
+                 ->set_default_value_from_effect_type( A_HASTE_ALL )
+                 ->set_pct_buff_type( STAT_PCT_BUFF_HASTE );
+    }
+  }
+  else if ( util::str_compare_ci( opt_str, "crit" ) )
+  {
+    buff = buff_t::find( effect.player, "the_mad_dukes_tea_crit" );
+    if ( !buff )
+    {
+      buff = make_buff<stat_buff_t>( effect.player, "the_mad_dukes_tea_crit", effect.player->find_spell( 354017 ) )
+                 ->set_pct_buff_type( STAT_PCT_BUFF_CRIT )
+                 ->set_default_value_from_effect_type( A_MOD_ALL_CRIT_CHANCE );
+    }
+  }
+  else if ( util::str_compare_ci( opt_str, "primary" ) )
+  {
+    buff = buff_t::find( effect.player, "the_mad_dukes_tea_primary" );
+    if ( !buff )
+    {
+      buff = make_buff<stat_buff_t>( effect.player, "the_mad_dukes_tea_primary", effect.player->find_spell( 353266 ) )
+                 ->set_pct_buff_type( STAT_PCT_BUFF_INTELLECT )
+                 ->set_pct_buff_type( STAT_PCT_BUFF_STRENGTH )
+                 ->set_pct_buff_type( STAT_PCT_BUFF_AGILITY )
+                 ->set_default_value_from_effect_type( A_MOD_TOTAL_STAT_PERCENTAGE );
+    }
+  }
+  else if ( util::str_compare_ci( opt_str, "versatility" ) )
+  {
+    buff = buff_t::find( effect.player, "the_mad_dukes_tea_versatility" );
+    if ( !buff )
+    {
+      buff =
+          make_buff<stat_buff_t>( effect.player, "the_mad_dukes_tea_versatility", effect.player->find_spell( 354018 ) )
+              ->set_pct_buff_type( STAT_PCT_BUFF_VERSATILITY )
+              ->set_default_value_from_effect_type( A_MOD_VERSATILITY_PCT );
+    }
+  }
+  else
+  {
+    buff = nullptr;
+  }
+
+  if ( buff )
+    effect.player->register_combat_begin( buff );
+  else
+    effect.player->sim->error( "Warning: Invalid type '{}' for Party Favors, ignoring.", opt_str );
 }
 
 void built_for_war( special_effect_t& effect )
@@ -574,6 +793,57 @@ void superior_tactics( special_effect_t& effect )
   }
 
   new dbc_proc_callback_t( effect.player, effect );
+}
+
+void battlefield_presence( special_effect_t& effect )
+{
+  auto forced_enemies = effect.player->sim->shadowlands_opts.battlefield_presence_enemies;
+  auto buff           = buff_t::find( effect.player, "battlefield_presence" );
+  auto p              = effect.player;
+
+  if ( !buff )
+  {
+    buff = make_buff( effect.player, "battlefield_presence", effect.player->find_spell( 352858 ) )
+               ->set_default_value_from_effect_type( A_MOD_DAMAGE_PERCENT_DONE )
+               ->add_invalidate( CACHE_PLAYER_DAMAGE_MULTIPLIER )
+               ->set_period( 0_ms );
+  }
+
+  // If the option is not set, adjust stacks every time the target_non_sleeping_list changes
+  if ( forced_enemies == -1 )
+  {
+    effect.activation_cb = [ p, buff ]() {
+      p->sim->target_non_sleeping_list.register_callback( [ p, buff ]( player_t* ) {
+        auto enemies       = as<int>( p->sim->target_non_sleeping_list.size() );
+        auto current_stack = buff->current_stack;
+        auto max_stack     = buff->max_stack();
+
+        if ( enemies != current_stack )
+        {
+          // Short circuit if there are more enemies than 3 and we are already at max stacks
+          if ( enemies > max_stack && current_stack == max_stack )
+            return;
+
+          auto diff = as<int>( enemies ) - current_stack;
+          if ( diff > 0 )
+            buff->trigger( diff );
+          else if ( diff < 0 )
+            buff->decrement( -diff );
+        }
+      } );
+    };
+  }
+  else
+  {
+    if ( forced_enemies != 0 )
+      buff->set_initial_stack( forced_enemies );
+  }
+
+  if ( buff && forced_enemies != 0 )
+  {
+    effect.player->register_combat_begin( buff );
+    effect.player->buffs.battlefield_presence = buff;
+  }
 }
 
 void let_go_of_the_past( special_effect_t& effect )
@@ -655,6 +925,19 @@ void combat_meditation( special_effect_t& effect )
   add_covenant_cast_callback<covenant_cb_buff_t>( effect.player, buff );
 }
 
+void better_together( special_effect_t& effect )
+{
+  auto buff = buff_t::find( effect.player, "better_together" );
+  if ( !buff )
+    buff = make_buff<stat_buff_t>( effect.player, "better_together", effect.player->find_spell( 352498 ) )
+               ->set_duration( 0_ms );
+
+  effect.player->register_combat_begin( [ buff ]( player_t* p ) {
+    if ( p->sim->shadowlands_opts.better_together_ally )
+      buff->trigger();
+  } );
+}
+
 void pointed_courage( special_effect_t& effect )
 {
   auto buff = buff_t::find( effect.player, "pointed_courage" );
@@ -671,6 +954,42 @@ void pointed_courage( special_effect_t& effect )
   effect.player->register_combat_begin( [ buff ]( player_t* p ) {
     buff->trigger( p->sim->shadowlands_opts.pointed_courage_nearby );
   } );
+}
+
+void spear_of_the_archon( special_effect_t& effect )
+{
+  struct spear_of_the_archon_cb_t : public dbc_proc_callback_t
+  {
+    double hp_pct;
+
+    spear_of_the_archon_cb_t( const special_effect_t& e )
+      : dbc_proc_callback_t( e.player, e ), hp_pct( e.driver()->effectN( 1 ).base_value() )
+    {
+    }
+
+    void trigger( action_t* a, action_state_t* s ) override
+    {
+      if ( s->target->health_percentage() > hp_pct && s->target != a->player )
+      {
+        dbc_proc_callback_t::trigger( a, s );
+      }
+    }
+  };
+
+  // TODO: Confirm flags
+  effect.proc_flags_  = PF_ALL_DAMAGE | PF_PERIODIC;
+  effect.proc_flags2_ = PF2_ALL_HIT | PF2_PERIODIC_DAMAGE;
+  effect.proc_chance_ = 1.0;
+
+  effect.custom_buff = buff_t::find( effect.player, "spear_of_the_archon" );
+  if ( !effect.custom_buff )
+  {
+    effect.custom_buff = make_buff( effect.player, "spear_of_the_archon", effect.player->find_spell( 352720 ) )
+                             ->set_default_value_from_effect_type( A_MOD_ALL_CRIT_CHANCE )
+                             ->set_pct_buff_type( STAT_PCT_BUFF_CRIT );
+  }
+
+  new spear_of_the_archon_cb_t( effect );
 }
 
 void hammer_of_genesis( special_effect_t& effect )
@@ -893,6 +1212,14 @@ void brons_call_to_action( special_effect_t& effect )
         bron = new bron_pet_t( e.player );
     }
 
+    void trigger( action_t* a, action_state_t* s ) override
+    {
+      if ( a->background || a->trigger_gcd <= 0_ms || a->data().flags( spell_attribute::SX_NO_THREAT ) )
+        return;
+
+      dbc_proc_callback_t::trigger( a, s );
+    }
+
     void execute( action_t* a, action_state_t* s ) override
     {
       if ( proc_buff->at_max_stacks() )
@@ -907,8 +1234,7 @@ void brons_call_to_action( special_effect_t& effect )
     }
   };
 
-  // TODO: This does not seem to proc on all of the spells implied by these proc flags.
-  // For example, Arcane Missiles does not trigger a stack of the buff.
+  // TODO: This technically uses proc flag 34 (Cast Successful), which currently isn't supported by simc.
   effect.proc_flags_  = PF_ALL_DAMAGE | PF_ALL_HEAL;
   effect.proc_flags2_ = PF2_CAST | PF2_CAST_DAMAGE | PF2_CAST_HEAL;
 
@@ -965,7 +1291,7 @@ void volatile_solvent( special_effect_t& effect )
                   ->set_pct_buff_type( STAT_PCT_BUFF_INTELLECT )
                   ->set_pct_buff_type( STAT_PCT_BUFF_STRENGTH )
                   ->set_pct_buff_type( STAT_PCT_BUFF_AGILITY )
-                  ->set_default_value_from_effect_type( A_MOD_PERCENT_STAT );
+                  ->set_default_value_from_effect_type( A_MOD_TOTAL_STAT_PERCENTAGE );
         }
         break;
 
@@ -985,7 +1311,8 @@ void volatile_solvent( special_effect_t& effect )
         {
           buff = make_buff( effect.player, "volatile_solvent_elemental", effect.player->find_spell( 323504 ) )
                   ->set_default_value_from_effect_type( A_MOD_DAMAGE_PERCENT_DONE )
-                  ->set_schools_from_effect( 1 );
+                  ->set_schools_from_effect( 1 )
+                  ->add_invalidate( CACHE_PLAYER_DAMAGE_MULTIPLIER );
         }
         effect.player->buffs.volatile_solvent_damage = buff;
         break;
@@ -996,7 +1323,8 @@ void volatile_solvent( special_effect_t& effect )
         {
           buff = make_buff( effect.player, "volatile_solvent_giant", effect.player->find_spell( 323506 ) )
                   ->set_default_value_from_effect_type( A_MOD_DAMAGE_PERCENT_DONE )
-                  ->set_schools_from_effect( 2 );
+                  ->set_schools_from_effect( 2 )
+                  ->add_invalidate( CACHE_PLAYER_DAMAGE_MULTIPLIER );
         }
         effect.player->buffs.volatile_solvent_damage = buff;
         break;
@@ -1164,7 +1492,7 @@ void forgeborne_reveries( special_effect_t& effect )
   effect.player->register_combat_begin( buff );
 }
 
-void serrated_spaulders( special_effect_t& effect )
+void serrated_spaulders( special_effect_t& )
 {
 
 }
@@ -1220,6 +1548,124 @@ void heirmirs_arsenal_marrowed_gemstone( special_effect_t& effect )
   new marrowed_gemstone_cb_t( effect, buff );
 }
 
+void carvers_eye( special_effect_t& effect )
+{
+  struct carvers_eye_cb_t : public dbc_proc_callback_t
+  {
+    double hp_pct;
+
+    // Effect 1 and 3 both have the same value, but the tooltip uses effect 3
+    carvers_eye_cb_t( const special_effect_t& e )
+      : dbc_proc_callback_t( e.player, e ), hp_pct( e.driver()->effectN( 3 ).base_value() )
+    {
+    }
+
+    void trigger( action_t* a, action_state_t* s ) override
+    {
+      // Can only proc on a target you haven't procced on for 10s
+      auto td = a->player->get_target_data( s->target );
+      if ( s->target->health_percentage() > hp_pct && s->target != a->player &&
+           !td->debuff.carvers_eye_debuff->check() )
+      {
+        dbc_proc_callback_t::trigger( a, s );
+        td->debuff.carvers_eye_debuff->trigger();
+      }
+    }
+  };
+
+  // TODO: Confirm flags (including pet damage)
+  effect.proc_flags_  = PF_ALL_DAMAGE | PF_PERIODIC;
+  effect.proc_flags2_ = PF2_ALL_HIT | PF2_PERIODIC_DAMAGE;
+  effect.proc_chance_ = 1.0;
+
+  effect.custom_buff = buff_t::find( effect.player, "carvers_eye" );
+  if ( !effect.custom_buff )
+  {
+    auto val = effect.player->find_spell( 351414 )->effectN( 1 ).average( effect.player );
+
+    effect.custom_buff = make_buff<stat_buff_t>( effect.player, "carvers_eye", effect.player->find_spell( 351414 ) )
+                             ->add_stat( STAT_MASTERY_RATING, val );
+  }
+
+  new carvers_eye_cb_t( effect );
+}
+
+struct mnemonic_residual_action_t : public residual_action::residual_periodic_action_t<spell_t>
+{
+  mnemonic_residual_action_t( const special_effect_t& effect )
+    : residual_action::residual_periodic_action_t<spell_t>( "mnemonic_equipment", effect.player,
+                                                            effect.player->find_spell( 351687 ) )
+  {
+  }
+};
+
+void mnemonic_equipment( special_effect_t& effect )
+{
+  struct mnemonic_equipment_cb_t : public dbc_proc_callback_t
+  {
+    double hp_pct;
+    double dmg_repeat_pct;
+    mnemonic_residual_action_t* mnemonic_residual_action;
+
+    mnemonic_equipment_cb_t( const special_effect_t& e )
+      : dbc_proc_callback_t( e.player, e ),
+        hp_pct( e.driver()->effectN( 1 ).base_value() ),
+        dmg_repeat_pct( e.driver()->effectN( 2 ).percent() )
+    {
+      mnemonic_residual_action = new mnemonic_residual_action_t( e );
+    }
+
+    void trigger( action_t* a, action_state_t* s ) override
+    {
+      if ( s->target->health_percentage() < hp_pct && s->target != a->player )
+      {
+        dbc_proc_callback_t::trigger( a, s );
+      }
+    }
+
+    void execute( action_t* a, action_state_t* s ) override
+    {
+      if ( !a->harmful )
+        return;
+
+      if ( s->target->health_percentage() < hp_pct )
+      {
+        dbc_proc_callback_t::execute( a, s );
+        auto amount = s->result_amount * dmg_repeat_pct;
+
+        // In game this has been bugged, instead of rolling the damage over it overrides it
+        // Simulating this bug by simply expiring the dot before we trigger a new one
+        if ( a->player->bugs )
+        {
+          mnemonic_residual_action->get_dot( s->target )->cancel();
+        }
+        residual_action::trigger( mnemonic_residual_action, s->target, amount );
+      }
+    }
+  };
+
+  // TODO: Confirm flags/check if pet damage procs this
+  effect.proc_flags_  = PF_ALL_DAMAGE | PF_PERIODIC;
+  effect.proc_flags2_ = PF2_ALL_HIT | PF2_PERIODIC_DAMAGE;
+  effect.proc_chance_ = 1.0;
+
+  new mnemonic_equipment_cb_t( effect );
+}
+
+// Passive which increases Stamina based on Renown level
+void deepening_bond( special_effect_t& effect )
+{
+  const auto spell = effect.driver();
+
+  if ( effect.player->sim->debug )
+  {
+    effect.player->sim->out_debug.print( "{} increasing stamina by {}% ({})",
+        effect.player->name(), spell->effectN( 1 ).base_value(), spell->name_cstr() );
+  }
+
+  effect.player->base.attribute_multiplier[ ATTR_STAMINA ] *= 1.0 + spell->effectN( 1 ).percent();
+}
+
 // Helper function for registering an effect, with autoamtic skipping initialization if soulbind spell is not available
 void register_soulbind_special_effect( unsigned spell_id, const custom_cb_t& init_callback, bool fallback = false )
 {
@@ -1239,22 +1685,29 @@ void register_special_effects()
   register_soulbind_special_effect( 320660, soulbinds::niyas_tools_poison );
   register_soulbind_special_effect( 320662, soulbinds::niyas_tools_herbs );
   register_soulbind_special_effect( 322721, soulbinds::grove_invigoration, true );
+  register_soulbind_special_effect( 352503, soulbinds::bonded_hearts );
   register_soulbind_special_effect( 319191, soulbinds::field_of_blossoms, true );  // Dreamweaver
   register_soulbind_special_effect( 319210, soulbinds::social_butterfly );
-  register_soulbind_special_effect( 325069, soulbinds::first_strike );  // Korayn
+  register_soulbind_special_effect( 352786, soulbinds::dream_delver );
+  register_soulbind_special_effect( 325069, soulbinds::first_strike, true );  // Korayn
   register_soulbind_special_effect( 325066, soulbinds::wild_hunt_tactics );
   // Venthyr
   //register_soulbind_special_effect( 331580, soulbinds::exacting_preparation );  // Nadjia
   register_soulbind_special_effect( 331584, soulbinds::dauntless_duelist );
   register_soulbind_special_effect( 331586, soulbinds::thrill_seeker, true );
+  register_soulbind_special_effect( 352373, soulbinds::fatal_flaw );
   register_soulbind_special_effect( 336239, soulbinds::soothing_shade );  // Theotar
   register_soulbind_special_effect( 319983, soulbinds::wasteland_propriety );
+  register_soulbind_special_effect( 351750, soulbinds::party_favors );
   register_soulbind_special_effect( 319973, soulbinds::built_for_war );  // Draven
   register_soulbind_special_effect( 332753, soulbinds::superior_tactics );
+  register_soulbind_special_effect( 352417, soulbinds::battlefield_presence );
   // Kyrian
   register_soulbind_special_effect( 328257, soulbinds::let_go_of_the_past );  // Pelagos
   register_soulbind_special_effect( 328266, soulbinds::combat_meditation );
+  register_soulbind_special_effect( 351146, soulbinds::better_together );
   register_soulbind_special_effect( 329778, soulbinds::pointed_courage );    // Kleia
+  register_soulbind_special_effect( 351488, soulbinds::spear_of_the_archon );
   register_soulbind_special_effect( 333935, soulbinds::hammer_of_genesis );  // Mikanikos
   register_soulbind_special_effect( 333950, soulbinds::brons_call_to_action, true );
   // Necrolord
@@ -1265,6 +1718,21 @@ void register_special_effects()
   register_soulbind_special_effect( 326514, soulbinds::forgeborne_reveries );  // Heirmir
   register_soulbind_special_effect( 326504, soulbinds::serrated_spaulders );
   register_soulbind_special_effect( 326572, soulbinds::heirmirs_arsenal_marrowed_gemstone, true );
+  register_soulbind_special_effect( 350899, soulbinds::carvers_eye );
+  register_soulbind_special_effect( 350936, soulbinds::mnemonic_equipment );
+  // Covenant Renown Stamina Passives
+  unique_gear::register_special_effect( 344052, soulbinds::deepening_bond ); // Night Fae Rank 1
+  unique_gear::register_special_effect( 344053, soulbinds::deepening_bond ); // Night Fae Rank 2
+  unique_gear::register_special_effect( 344057, soulbinds::deepening_bond ); // Night Fae Rank 3
+  unique_gear::register_special_effect( 344068, soulbinds::deepening_bond ); // Venthyr Rank 1
+  unique_gear::register_special_effect( 344069, soulbinds::deepening_bond ); // Venthyr Rank 2
+  unique_gear::register_special_effect( 344070, soulbinds::deepening_bond ); // Venthyr Rank 3
+  unique_gear::register_special_effect( 344076, soulbinds::deepening_bond ); // Necrolord Rank 1
+  unique_gear::register_special_effect( 344077, soulbinds::deepening_bond ); // Necrolord Rank 2
+  unique_gear::register_special_effect( 344078, soulbinds::deepening_bond ); // Necrolord Rank 3
+  unique_gear::register_special_effect( 344087, soulbinds::deepening_bond ); // Kyrian Rank 1
+  unique_gear::register_special_effect( 344089, soulbinds::deepening_bond ); // Kyrian Rank 2
+  unique_gear::register_special_effect( 344091, soulbinds::deepening_bond ); // Kyrian Rank 3
 }
 
 void initialize_soulbinds( player_t* player )
@@ -1275,6 +1743,7 @@ void initialize_soulbinds( player_t* player )
   for ( auto soulbind_spell : player->covenant->soulbind_spells() )
   {
     auto spell = player->find_spell( soulbind_spell );
+
     if ( !spell->ok() )
       continue;
 
@@ -1285,6 +1754,26 @@ void initialize_soulbinds( player_t* player )
     unique_gear::initialize_special_effect( effect, soulbind_spell );
 
     // Ensure the soulbind has a custom special effect to protect against errant auto-inference
+    if ( !effect.is_custom() )
+      continue;
+
+    player->special_effects.push_back( new special_effect_t( effect ) );
+  }
+
+  for ( auto renown_spell : player->covenant->renown_spells() )
+  {
+    auto spell = player->find_spell( renown_spell );
+
+    if ( !spell->ok() )
+      continue;
+
+    special_effect_t effect{ player };
+    effect.type   = SPECIAL_EFFECT_EQUIP;
+    effect.source = SPECIAL_EFFECT_SOURCE_SOULBIND;
+
+    unique_gear::initialize_special_effect( effect, renown_spell );
+
+    // Ensure the renown spell has a custom special effect to protect against errant auto-inference
     if ( !effect.is_custom() )
       continue;
 
@@ -1321,6 +1810,37 @@ void register_target_data_initializers( sim_t* sim )
     }
     else
       td->debuff.plagueys_preemptive_strike = make_buff( *td, "plagueys_preemptive_strike" )->set_quiet( true );
+  } );
+
+  // Dream Delver
+  sim->register_target_data_initializer( []( actor_target_data_t* td ) {
+    if ( td->source->find_soulbind_spell( "Dream Delver" )->ok() )
+    {
+      assert( !td->debuff.dream_delver );
+
+      td->debuff.dream_delver = make_buff( *td, "dream_delver", td->source->find_spell( 353354 ) )
+        ->set_default_value_from_effect_type( A_MOD_DAMAGE_FROM_CASTER );
+      td->debuff.dream_delver->reset();
+    }
+    else
+      td->debuff.dream_delver = make_buff( *td, "dream_delver" )->set_quiet( true );
+  } );
+
+  // Carver's Eye dummy buff to track cooldown
+  sim->register_target_data_initializer( []( actor_target_data_t* td ) {
+    auto carvers_eye = td->source->find_soulbind_spell( "Carver's Eye" );
+    if ( carvers_eye->ok() )
+    {
+      assert( !td->debuff.carvers_eye_debuff );
+
+      td->debuff.carvers_eye_debuff =
+          make_buff( *td, "carvers_eye_debuff", td->source->find_spell( 350899 ) )
+              ->set_quiet( true )
+              ->set_duration( timespan_t::from_seconds( carvers_eye->effectN( 2 ).base_value() ) );
+      td->debuff.carvers_eye_debuff->reset();
+    }
+    else
+      td->debuff.carvers_eye_debuff = make_buff( *td, "carvers_eye_debuff" )->set_quiet( true );
   } );
 }
 

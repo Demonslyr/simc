@@ -49,6 +49,7 @@
 
 #include "player/azerite_data.hpp"
 #include "player/consumable.hpp"
+#include "player/covenant.hpp"
 #include "player/sample_data_helper.hpp"
 #include "player/gear_stats.hpp"
 #include "player/sc_actor_pair.hpp"
@@ -76,26 +77,19 @@
 #include "player/ground_aoe.hpp"
 #include "player/spawner_base.hpp"
 #include "player/instant_absorb.hpp"
+#include "player/runeforge_data.hpp"
 
 #include "report/reports.hpp"
 #include "report/decorators.hpp"
 #include "report/color.hpp"
 #include "report/report_helper.hpp"
-#include "report/report_timer.hpp"
 #include "report/sc_highchart.hpp"
 
-#include "sim/sc_profileset.hpp"
 #include "sim/sc_option.hpp"
 #include "sim/raid_event.hpp"
 #include "sim/sc_expressions.hpp"
-#include "sim/iteration_data_entry.hpp"
-#include "sim/sim_control.hpp"
-#include "sim/progress_bar.hpp"
-#include "sim/event_manager.hpp"
 #include "sim/sc_sim.hpp"
 #include "sim/scale_factor_control.hpp"
-#include "sim/plot.hpp"
-#include "sim/reforge_plot.hpp"
 #include "sim/event.hpp"
 #include "sim/benefit.hpp"
 #include "sim/uptime.hpp"
@@ -104,19 +98,15 @@
 #include "sim/shuffled_rng.hpp"
 #include "sim/sc_cooldown.hpp"
 #include "sim/gain.hpp"
+#include "sim/cooldown_waste_data.hpp"
 
 #include "util/generic.hpp" // Generic programming tools
 #include "util/sample_data.hpp"
 #include "util/timeline.hpp"
 #include "util/rng.hpp"
-#include "util/concurrency.hpp"
-#include "util/cache.hpp"
 #include "util/util.hpp"
-#include "util/stopwatch.hpp"
 #include "util/io.hpp"
-#include "util/plot_data.hpp"
 #include "util/scoped_callback.hpp"
-#include "util/xml.hpp"
 
 #include <sstream>
 

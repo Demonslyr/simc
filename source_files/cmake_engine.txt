@@ -133,6 +133,7 @@ report/reports.hpp
 report/sc_highchart.hpp
 sc_enums.hpp
 sim/benefit.hpp
+sim/cooldown_waste_data.hpp
 sim/event.hpp
 sim/event_manager.hpp
 sim/gain.hpp
@@ -274,6 +275,7 @@ player/actor_target_data.cpp
 player/azerite_data.cpp
 player/covenant.cpp
 player/darkmoon_deck.cpp
+player/effect_callbacks.cpp
 player/ground_aoe.cpp
 player/instant_absorb.cpp
 player/player_event.cpp
@@ -305,6 +307,7 @@ report/sc_highchart.cpp
 report/sc_report_html_player.cpp
 report/sc_report_html_sim.cpp
 report/sc_report_text.cpp
+sim/cooldown_waste_data.cpp
 sim/event_manager.cpp
 sim/proc.cpp
 sim/real_ppm.cpp

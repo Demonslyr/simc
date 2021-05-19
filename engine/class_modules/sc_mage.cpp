@@ -180,74 +180,6 @@ struct buff_stack_benefit_t
   }
 };
 
-struct cooldown_waste_data_t : private noncopyable
-{
-  const cooldown_t* cd;
-  double buffer;
-
-  extended_sample_data_t normal;
-  extended_sample_data_t cumulative;
-
-  cooldown_waste_data_t( const cooldown_t* cooldown, bool simple = true ) :
-    cd( cooldown ),
-    buffer(),
-    normal( cd->name_str + " cooldown waste", simple ),
-    cumulative( cd->name_str + " cumulative cooldown waste", simple )
-  { }
-
-  void add( timespan_t cd_override = timespan_t::min(), timespan_t time_to_execute = 0_ms )
-  {
-    if ( cd_override == 0_ms || ( cd_override < 0_ms && cd->duration <= 0_ms ) )
-      return;
-
-    if ( cd->ongoing() )
-    {
-      normal.add( 0.0 );
-    }
-    else
-    {
-      double wasted = ( cd->sim.current_time() - cd->last_charged ).total_seconds();
-
-      // Waste caused by execute time is unavoidable for single charge spells, don't count it.
-      if ( cd->charges == 1 )
-        wasted -= time_to_execute.total_seconds();
-
-      normal.add( wasted );
-      buffer += wasted;
-    }
-  }
-
-  bool active() const
-  {
-    return normal.count() > 0 && cumulative.sum() > 0;
-  }
-
-  void merge( const cooldown_waste_data_t& other )
-  {
-    normal.merge( other.normal );
-    cumulative.merge( other.cumulative );
-  }
-
-  void analyze()
-  {
-    normal.analyze();
-    cumulative.analyze();
-  }
-
-  void datacollection_begin()
-  {
-    buffer = 0.0;
-  }
-
-  void datacollection_end()
-  {
-    if ( !cd->ongoing() )
-      buffer += ( cd->sim.current_time() - cd->last_charged ).total_seconds();
-
-    cumulative.add( buffer );
-  }
-};
-
 // Generalization of proc tracking (proc_t).
 // Keeps a track of multiple related effects at once.
 //
@@ -332,13 +264,7 @@ public:
   // Ground AoE tracking
   std::array<timespan_t, AOE_MAX> ground_aoe_expiration;
 
-  // Miscellaneous
-  player_t* last_bomb_target;
-  int remaining_winters_chill; // Estimation of remaining Winter's Chill stacks, accounting for travel time
-  double distance_from_rune;
-
   // Data collection
-  auto_dispose<std::vector<cooldown_waste_data_t*> > cooldown_waste_data_list;
   auto_dispose<std::vector<shatter_source_t*> > shatter_source_list;
 
   // Cached actions
@@ -498,6 +424,7 @@ public:
     timespan_t mirrors_of_torment_interval = 1.5_s;
     timespan_t arcane_missiles_chain_delay = 200_ms;
     double arcane_missiles_chain_relstddev = 0.1;
+    bool prepull_dc = false;
   } options;
 
   // Pets
@@ -533,6 +460,11 @@ public:
     proc_t* winters_chill_applied;
     proc_t* winters_chill_consumed;
   } procs;
+
+  struct rppm_t
+  {
+    real_ppm_t* deaths_fathom;
+  } rppm;
 
   struct shuffled_rngs_t
   {
@@ -611,9 +543,17 @@ public:
     int mana_gem_charges;
     int inactive_frozen_orbs;
     int active_frozen_orbs;
+    double distance_from_rune;
     double from_the_ashes_mastery;
     timespan_t last_enlightened_update;
+    player_t* last_bomb_target;
   } state;
+
+  struct expression_support_t
+  {
+    timespan_t kindling_reduction; // Cumulative reduction from Kindling not counting guaranteed crits from Combustion
+    int remaining_winters_chill; // Estimation of remaining Winter's Chill stacks, accounting for travel time
+  } expression_support;
 
   // Talents
   struct talents_list_t
@@ -706,6 +646,7 @@ public:
     item_runeforge_t slick_ice;
 
     // Shared
+    item_runeforge_t deaths_fathom;
     item_runeforge_t disciplinary_command;
     item_runeforge_t expanded_potential;
     item_runeforge_t grisly_icicle;
@@ -817,20 +758,6 @@ public:
     if ( !td )
       td = new mage_td_t( target, const_cast<mage_t*>( this ) );
     return td;
-  }
-
-  // Public mage functions:
-  cooldown_waste_data_t* get_cooldown_waste_data( const cooldown_t* cd )
-  {
-    for ( auto cdw : cooldown_waste_data_list )
-    {
-      if ( cdw->cd->name_str == cd->name_str )
-        return cdw;
-    }
-
-    auto cdw = new cooldown_waste_data_t( cd );
-    cooldown_waste_data_list.push_back( cdw );
-    return cdw;
   }
 
   shatter_source_t* get_shatter_source( util::string_view name )
@@ -1201,7 +1128,7 @@ struct rune_of_power_t final : public buff_t
   bool trigger( int stacks, double value, double chance, timespan_t duration ) override
   {
     auto mage = debug_cast<mage_t*>( player );
-    mage->distance_from_rune = 0.0;
+    mage->state.distance_from_rune = 0.0;
     mage->trigger_disciplinary_command( data().get_school_type() );
 
     return buff_t::trigger( stacks, value, chance, duration );
@@ -1786,6 +1713,16 @@ public:
       counter->trigger();
     }
   }
+
+  void trigger_deaths_fathom()
+  {
+    if ( p()->buffs.deathborne->check() )
+      p()->buffs.deathborne->current_value += p()->runeforge.deaths_fathom->effectN( 2 ).percent();
+
+    // TODO: On the PTR, this currently triggers some covenant cast callbacks, such as Lead by Example.
+    if ( p()->rppm.deaths_fathom->trigger() )
+      p()->buffs.deathborne->extend_duration_or_trigger( p()->runeforge.deaths_fathom->effectN( 1 ).time_value() );
+  }
 };
 
 using residual_action_t = residual_action::residual_periodic_action_t<mage_spell_t>;
@@ -1898,7 +1835,10 @@ struct fire_mage_spell_t : public mage_spell_t
         && s->result == RESULT_CRIT
         && p()->talents.kindling->ok() )
       {
-        p()->cooldowns.combustion->adjust( -p()->talents.kindling->effectN( 1 ).time_value() );
+        timespan_t amount = p()->talents.kindling->effectN( 1 ).time_value();
+        p()->cooldowns.combustion->adjust( -amount );
+        if ( !p()->buffs.combustion->check() )
+          p()->expression_support.kindling_reduction += amount;
       }
 
       if ( triggers.from_the_ashes
@@ -2294,7 +2234,7 @@ struct frost_mage_spell_t : public mage_spell_t
     mage_spell_t::execute();
 
     if ( consumes_winters_chill )
-      p()->remaining_winters_chill = std::max( p()->remaining_winters_chill - 1, 0 );
+      p()->expression_support.remaining_winters_chill = std::max( p()->expression_support.remaining_winters_chill - 1, 0 );
   }
 
   void impact( action_state_t* s ) override
@@ -2558,8 +2498,13 @@ struct arcane_blast_t final : public arcane_mage_spell_t
     // Clearcasting immediately after Arcane Blast, a stack of Nether Precision
     // will be consumed by Arcane Blast will not benefit from the damage bonus.
     // Check if this is still the case closer to Shadowlands release.
-    if ( result_is_hit( s-> result ) && p()->conduits.nether_precision.ok() )
-      make_event( *sim, 15_ms, [ this ] { p()->buffs.nether_precision->decrement(); } );
+    if ( result_is_hit( s->result ) )
+    {
+      trigger_deaths_fathom();
+
+      if ( p()->conduits.nether_precision.ok() )
+        make_event( *sim, 15_ms, [ this ] { p()->buffs.nether_precision->decrement(); } );
+    }
   }
 
   double action_multiplier() const override
@@ -3062,6 +3007,7 @@ struct combustion_t final : public fire_mage_spell_t
 
     p()->buffs.combustion->trigger();
     p()->buffs.rune_of_power->trigger();
+    p()->expression_support.kindling_reduction = 0_ms;
   }
 };
 
@@ -3094,7 +3040,7 @@ struct comet_storm_t final : public frost_mage_spell_t
   void execute() override
   {
     frost_mage_spell_t::execute();
-    p()->remaining_winters_chill = 0;
+    p()->expression_support.remaining_winters_chill = 0;
   }
 
   void impact( action_state_t* s ) override
@@ -3429,6 +3375,7 @@ struct fireball_t final : public fire_mage_spell_t
     {
       consume_molten_skyfall( s->target );
       trigger_molten_skyfall();
+      trigger_deaths_fathom();
     }
   }
 
@@ -3603,7 +3550,7 @@ struct flurry_t final : public frost_mage_spell_t
     if ( brain_freeze )
     {
       if ( p()->spec.brain_freeze_2->ok() )
-        p()->remaining_winters_chill = 2;
+        p()->expression_support.remaining_winters_chill = 2;
 
       p()->procs.brain_freeze_used->occur();
     }
@@ -3706,6 +3653,7 @@ struct frostbolt_t final : public frost_mage_spell_t
     {
       consume_cold_front( s->target );
       trigger_cold_front();
+      trigger_deaths_fathom();
     }
   }
 };
@@ -3819,7 +3767,7 @@ struct frozen_orb_t final : public frost_mage_spell_t
     make_event( *sim, duration, [ this, &counter, active ]
     {
       counter--;
-      if ( p()->state.active_frozen_orbs + p()->state.inactive_frozen_orbs == 0 || active && p()->bugs )
+      if ( p()->state.active_frozen_orbs + p()->state.inactive_frozen_orbs == 0 || ( active && p()->bugs ) )
         p()->buffs.freezing_winds->expire();
     } );
   }
@@ -4478,9 +4426,9 @@ struct nether_tempest_t final : public arcane_mage_spell_t
 
     if ( hit_any_target )
     {
-      if ( p()->last_bomb_target && p()->last_bomb_target != target )
-        get_td( p()->last_bomb_target )->dots.nether_tempest->cancel();
-      p()->last_bomb_target = target;
+      if ( p()->state.last_bomb_target && p()->state.last_bomb_target != target )
+        get_td( p()->state.last_bomb_target )->dots.nether_tempest->cancel();
+      p()->state.last_bomb_target = target;
     }
   }
 
@@ -5519,9 +5467,6 @@ mage_t::mage_t( sim_t* sim, util::string_view name, race_e r ) :
   player_t( sim, MAGE, name, r ),
   events(),
   ground_aoe_expiration(),
-  last_bomb_target(),
-  remaining_winters_chill(),
-  distance_from_rune(),
   action(),
   benefits(),
   buffs(),
@@ -5530,10 +5475,12 @@ mage_t::mage_t( sim_t* sim, util::string_view name, race_e r ) :
   options(),
   pets(),
   procs(),
+  rppm(),
   shuffled_rng(),
   sample_data(),
   spec(),
   state(),
+  expression_support(),
   talents(),
   runeforge(),
   conduits(),
@@ -5739,6 +5686,7 @@ void mage_t::create_options()
   add_option( opt_timespan( "mirrors_of_torment_interval", options.mirrors_of_torment_interval, 1_ms, timespan_t::max() ) );
   add_option( opt_timespan( "arcane_missiles_chain_delay", options.arcane_missiles_chain_delay, 0_ms, timespan_t::max() ) );
   add_option( opt_float( "arcane_missiles_chain_relstddev", options.arcane_missiles_chain_relstddev, 0.0, std::numeric_limits<double>::max() ) );
+  add_option( opt_bool( "mage.prepull_dc", options.prepull_dc ) );
 
   player_t::create_options();
 }
@@ -5768,14 +5716,6 @@ void mage_t::merge( player_t& other )
 
   mage_t& mage = dynamic_cast<mage_t&>( other );
 
-  for ( size_t i = 0; i < cooldown_waste_data_list.size(); i++ )
-  {
-    auto ours = cooldown_waste_data_list[ i ];
-    auto theirs = mage.cooldown_waste_data_list[ i ];
-    assert( ours->cd->name_str == theirs->cd->name_str );
-    ours->merge( *theirs );
-  }
-
   for ( size_t i = 0; i < shatter_source_list.size(); i++ )
   {
     auto ours = shatter_source_list[ i ];
@@ -5803,8 +5743,6 @@ void mage_t::analyze( sim_t& s )
 {
   player_t::analyze( s );
 
-  range::for_each( cooldown_waste_data_list, std::mem_fn( &cooldown_waste_data_t::analyze ) );
-
   switch ( specialization() )
   {
     case MAGE_ARCANE:
@@ -5824,7 +5762,6 @@ void mage_t::datacollection_begin()
 {
   player_t::datacollection_begin();
 
-  range::for_each( cooldown_waste_data_list, std::mem_fn( &cooldown_waste_data_t::datacollection_begin ) );
   range::for_each( shatter_source_list, std::mem_fn( &shatter_source_t::datacollection_begin ) );
 }
 
@@ -5832,7 +5769,6 @@ void mage_t::datacollection_end()
 {
   player_t::datacollection_end();
 
-  range::for_each( cooldown_waste_data_list, std::mem_fn( &cooldown_waste_data_t::datacollection_end ) );
   range::for_each( shatter_source_list, std::mem_fn( &shatter_source_t::datacollection_end ) );
 }
 
@@ -6018,6 +5954,7 @@ void mage_t::init_spells()
   runeforge.glacial_fragments    = find_runeforge_legendary( "Glacial Fragments"    );
   runeforge.slick_ice            = find_runeforge_legendary( "Slick Ice"            );
 
+  runeforge.deaths_fathom        = find_runeforge_legendary( "Death's Fathom"       );
   runeforge.disciplinary_command = find_runeforge_legendary( "Disciplinary Command" );
   runeforge.expanded_potential   = find_runeforge_legendary( "Expanded Potential"   );
   runeforge.grisly_icicle        = find_runeforge_legendary( "Grisly Icicle"        );
@@ -6072,7 +6009,8 @@ void mage_t::create_buffs()
   player_t::create_buffs();
 
   // Arcane
-  buffs.arcane_charge        = make_buff( this, "arcane_charge", find_spell( 36032 ) );
+  buffs.arcane_charge        = make_buff( this, "arcane_charge", find_spell( 36032 ) )
+                                 ->set_constant_behavior( buff_constant_behavior::NEVER_CONSTANT );
   buffs.arcane_power         = make_buff( this, "arcane_power", find_spell( 12042 ) )
                                  ->set_cooldown( 0_ms )
                                  ->set_default_value_from_effect( 1 )
@@ -6172,7 +6110,8 @@ void mage_t::create_buffs()
 
 
   // Shared
-  buffs.incanters_flow = make_buff<buffs::incanters_flow_t>( this );
+  buffs.incanters_flow = make_buff<buffs::incanters_flow_t>( this )
+                           ->set_constant_behavior( buff_constant_behavior::NEVER_CONSTANT );
   buffs.rune_of_power  = make_buff<buffs::rune_of_power_t>( this );
   buffs.focus_magic    = make_buff( this, "focus_magic_proc", find_spell( 321363 ) )
                            ->set_default_value_from_effect( 2 )
@@ -6182,7 +6121,8 @@ void mage_t::create_buffs()
   // Runeforge Legendaries
   buffs.arcane_harmony = make_buff( this, "arcane_harmony", find_spell( 332777 ) )
                            ->set_default_value_from_effect( 1 )
-                           ->set_chance( runeforge.arcane_harmony.ok() );
+                           ->set_chance( runeforge.arcane_harmony.ok() )
+                           ->set_constant_behavior( buff_constant_behavior::NEVER_CONSTANT );
   buffs.siphon_storm   = make_buff( this, "siphon_storm", find_spell( 332934 ) )
                            ->set_default_value_from_effect( 1 )
                            ->set_pct_buff_type( STAT_PCT_BUFF_INTELLECT )
@@ -6233,6 +6173,7 @@ void mage_t::create_buffs()
 
   // Covenant Abilities
   buffs.deathborne = make_buff( this, "deathborne", find_spell( 324220 ) )
+                       ->set_cooldown( 0_ms )
                        ->set_default_value_from_effect( 2 )
                        ->modify_duration( conduits.gift_of_the_lich.time_value() );
 
@@ -6358,6 +6299,8 @@ void mage_t::init_uptimes()
 void mage_t::init_rng()
 {
   player_t::init_rng();
+
+  rppm.deaths_fathom = get_rppm( "deaths_fathom", runeforge.deaths_fathom, runeforge.deaths_fathom.item() );
 
   // TODO: There's no data about this in game. Keep an eye out in case Blizzard
   // changes this behind the scenes.
@@ -6555,10 +6498,8 @@ void mage_t::reset()
   events = events_t();
   burn_phase.reset();
   ground_aoe_expiration = std::array<timespan_t, AOE_MAX>();
-  last_bomb_target = nullptr;
-  remaining_winters_chill = 0;
-  distance_from_rune = 0.0;
   state = state_t();
+  expression_support = expression_support_t();
 }
 
 void mage_t::update_movement( timespan_t duration )
@@ -6622,6 +6563,11 @@ void mage_t::arise()
   {
     timespan_t first_tick = rng().real() * talents.time_anomaly->effectN( 1 ).period();
     events.time_anomaly = make_event<events::time_anomaly_tick_event_t>( *sim, *this, first_tick );
+  }
+
+  if ( runeforge.disciplinary_command->ok() && options.prepull_dc )
+  {
+    buffs.disciplinary_command->trigger();
   }
 }
 
@@ -6765,7 +6711,7 @@ std::unique_ptr<expr_t> mage_t::create_expression( util::string_view name )
   if ( util::str_compare_ci( name, "remaining_winters_chill" ) )
   {
     return make_fn_expr( name, [ this ]
-    { return remaining_winters_chill; } );
+    { return expression_support.remaining_winters_chill; } );
   }
 
   if ( util::str_compare_ci( name, "hot_streak_spells_in_flight" ) )
@@ -6791,6 +6737,21 @@ std::unique_ptr<expr_t> mage_t::create_expression( util::string_view name )
       for ( auto a : in_flight_list )
         spells += a->num_travel_events();
       return spells;
+    } );
+  }
+
+  if ( util::str_compare_ci( name, "expected_kindling_reduction" ) )
+  {
+    return make_fn_expr( name, [ this ]
+    {
+      if ( !talents.kindling->ok() || cooldowns.combustion->last_start < 0_ms )
+        return 1.0;
+
+      timespan_t t = sim->current_time() - cooldowns.combustion->last_start - buffs.combustion->buff_duration();
+      if ( t <= 0_ms )
+        return 1.0;
+
+      return t / ( t + expression_support.kindling_reduction );
     } );
   }
 
@@ -6914,9 +6875,9 @@ stat_e mage_t::convert_hybrid_stat( stat_e s ) const
 
 void mage_t::update_rune_distance( double distance )
 {
-  distance_from_rune += distance;
+  state.distance_from_rune += distance;
 
-  if ( buffs.rune_of_power->check() && distance_from_rune > talents.rune_of_power->effectN( 2 ).radius() )
+  if ( buffs.rune_of_power->check() && state.distance_from_rune > talents.rune_of_power->effectN( 2 ).radius() )
   {
     buffs.rune_of_power->expire();
     sim->print_debug( "{} moved out of Rune of Power.", name() );
@@ -6952,7 +6913,7 @@ void mage_t::update_from_the_ashes()
   if ( !talents.from_the_ashes->ok() )
     return;
 
-  state.from_the_ashes_mastery = talents.from_the_ashes->effectN( 3 ).base_value() * cooldowns.phoenix_flames->charges_fractional();
+  state.from_the_ashes_mastery = talents.from_the_ashes->effectN( 3 ).base_value() * static_cast<int>( cooldowns.phoenix_flames->charges_fractional() );
   invalidate_cache( CACHE_MASTERY );
 
   sim->print_debug( "{} updates mastery from From the Ashes, new value: {}", name_str, state.from_the_ashes_mastery );
@@ -7145,7 +7106,7 @@ public:
           "</tr>\n"
           "</thead>\n";
 
-    for ( const cooldown_waste_data_t* data : p.cooldown_waste_data_list )
+    for ( const auto& data : p.cooldown_waste_data_list )
     {
       if ( !data->active() )
         continue;

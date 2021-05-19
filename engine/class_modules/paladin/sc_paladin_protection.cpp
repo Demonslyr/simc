@@ -12,7 +12,7 @@ namespace paladin {
 
 struct ardent_defender_t : public paladin_spell_t
 {
-  ardent_defender_t( paladin_t* p, const std::string& options_str ) :
+  ardent_defender_t( paladin_t* p, util::string_view options_str ) :
     paladin_spell_t( "ardent_defender", p, p -> find_specialization_spell( "Ardent Defender" ) )
   {
     parse_options( options_str );
@@ -38,7 +38,7 @@ struct ardent_defender_t : public paladin_spell_t
 
 struct avengers_shield_base_t : public paladin_spell_t
 {
-  avengers_shield_base_t( const std::string& n, paladin_t* p, const spell_data_t* s, const std::string& options_str ) :
+  avengers_shield_base_t( util::string_view n, paladin_t* p, const spell_data_t* s, util::string_view options_str ) :
     paladin_spell_t( n, p, s )
   {
     parse_options( options_str );
@@ -102,7 +102,7 @@ struct avengers_shield_dt_t : public avengers_shield_base_t
 
 struct avengers_shield_t : public avengers_shield_base_t
 {
-  avengers_shield_t( paladin_t* p, const std::string& options_str ) :
+  avengers_shield_t( paladin_t* p, util::string_view options_str ) :
     avengers_shield_base_t( "avengers_shield", p, p -> find_specialization_spell( "Avenger's Shield" ), options_str )
   {
     cooldown = p -> cooldowns.avengers_shield;
@@ -161,7 +161,7 @@ struct avengers_shield_t : public avengers_shield_base_t
 
 struct moment_of_glory_t : public paladin_spell_t
 {
-  moment_of_glory_t( paladin_t* p, const std::string& options_str ) :
+  moment_of_glory_t( paladin_t* p, util::string_view options_str ) :
     paladin_spell_t( "moment_of_glory", p, p -> talents.moment_of_glory )
   {
     parse_options( options_str );
@@ -218,7 +218,7 @@ struct blessed_hammer_t : public paladin_spell_t
   blessed_hammer_tick_t* hammer;
   double num_strikes;
 
-  blessed_hammer_t( paladin_t* p, const std::string& options_str ) :
+  blessed_hammer_t( paladin_t* p, util::string_view options_str ) :
     paladin_spell_t( "blessed_hammer", p, p -> talents.blessed_hammer ),
     hammer( new blessed_hammer_tick_t( p ) ), num_strikes( 2 )
   {
@@ -272,7 +272,7 @@ struct blessed_hammer_t : public paladin_spell_t
 
 struct blessing_of_spellwarding_t : public paladin_spell_t
 {
-  blessing_of_spellwarding_t( paladin_t* p, const std::string& options_str ) :
+  blessing_of_spellwarding_t( paladin_t* p, util::string_view options_str ) :
     paladin_spell_t( "blessing_of_spellwarding", p, p -> talents.blessing_of_spellwarding )
   {
     parse_options( options_str );
@@ -299,7 +299,7 @@ struct blessing_of_spellwarding_t : public paladin_spell_t
 
 struct guardian_of_ancient_kings_t : public paladin_spell_t
 {
-  guardian_of_ancient_kings_t( paladin_t* p, const std::string& options_str ) :
+  guardian_of_ancient_kings_t( paladin_t* p, util::string_view options_str ) :
     paladin_spell_t( "guardian_of_ancient_kings", p, p -> find_specialization_spell( "Guardian of Ancient Kings" ) )
   {
     parse_options( options_str );
@@ -353,7 +353,7 @@ struct hammer_of_the_righteous_aoe_t : public paladin_melee_attack_t
 struct hammer_of_the_righteous_t : public paladin_melee_attack_t
 {
   hammer_of_the_righteous_aoe_t* hotr_aoe;
-  hammer_of_the_righteous_t( paladin_t* p, const std::string& options_str ) :
+  hammer_of_the_righteous_t( paladin_t* p, util::string_view options_str ) :
     paladin_melee_attack_t( "hammer_of_the_righteous", p, p -> find_class_spell( "Hammer of the Righteous" ) )
   {
     parse_options( options_str );
@@ -396,7 +396,7 @@ struct hammer_of_the_righteous_t : public paladin_melee_attack_t
 struct judgment_prot_t : public judgment_t
 {
   int judge_holy_power, sw_holy_power;
-  judgment_prot_t( paladin_t* p, const std::string& options_str ) :
+  judgment_prot_t( paladin_t* p, util::string_view options_str ) :
     judgment_t( p, options_str ),
     judge_holy_power( as<int>( p -> find_spell( 220637 ) -> effectN( 1 ).base_value() ) ),
     sw_holy_power( as<int>( p -> talents.prot_sanctified_wrath -> effectN( 2 ).base_value() ) )
@@ -425,81 +425,6 @@ struct judgment_prot_t : public judgment_t
   }
 };
 
-// Word of Glory ===================================================
-
-struct word_of_glory_t : public holy_power_consumer_t<paladin_heal_t>
-{
-  word_of_glory_t( paladin_t* p, const std::string& options_str ) :
-    holy_power_consumer_t( "word_of_glory", p, p -> find_class_spell( "Word of Glory" ) )
-  {
-    parse_options( options_str );
-    target = p;
-    is_wog = true;
-  }
-
-  double composite_target_multiplier( player_t* t ) const override
-  {
-    double m = holy_power_consumer_t::composite_target_multiplier( t );
-
-    if ( p() -> spec.word_of_glory_2 -> ok() )
-    {
-      // Heals for a base amount, increased by up to +300% based on the target's missing health
-      // Linear increase, each missing health % increases the healing by 3%
-      double missing_health_percent = std::min( 1.0 - t -> resources.pct( RESOURCE_HEALTH ), 1.0 );
-
-      m *= 1.0 + missing_health_percent * p() -> spec.word_of_glory_2 -> effectN( 1 ).percent();
-
-      sim -> print_debug( "Player {} missing {:.2f}% health, healing increased by {:.2f}%",
-                        t -> name(), missing_health_percent * 100,
-                        missing_health_percent * p() -> spec.word_of_glory_2 -> effectN( 1 ).percent() * 100 );
-    }
-    return m;
-  }
-
-  void impact( action_state_t *s ) override
-  {
-    holy_power_consumer_t::impact( s );
-    if ( p() -> conduit.shielding_words -> ok() && s -> result_amount > 0 )
-    {
-      p() -> buffs.shielding_words -> trigger( 1,
-        s -> result_amount * p() -> conduit.shielding_words.percent()
-      );
-    }
-  }
-
-  void execute() override
-  {
-    holy_power_consumer_t::execute();
-
-    if ( p() -> specialization() == PALADIN_PROTECTION && p() -> buffs.vanquishers_hammer -> up() )
-    {
-      p() -> buffs.vanquishers_hammer -> expire();
-      p() -> active.necrolord_shield_of_the_righteous -> execute();
-    }
-  }
-
-  double action_multiplier() const override
-  {
-    double am = holy_power_consumer_t::action_multiplier();
-    if ( p() -> buffs.shining_light_free -> up() && p() -> buffs.divine_purpose -> up() )
-    // Shining Light does not benefit from divine purpose
-      am /= 1.0 + p() -> spells.divine_purpose_buff -> effectN( 2 ).percent();
-    return am;
-  }
-
-  double cost() const override
-  {
-    double c = holy_power_consumer_t::cost();
-
-    if ( p() -> buffs.shining_light_free -> check() )
-      c *= 1.0 + p() -> buffs.shining_light_free -> data().effectN( 1 ).percent();
-    if ( p() -> buffs.royal_decree -> check() )
-      c *= 1.0 + p() -> buffs.royal_decree -> data().effectN( 1 ).percent();
-
-    return c;
-  }
-};
-
 // Shield of the Righteous ==================================================
 
 shield_of_the_righteous_buff_t::shield_of_the_righteous_buff_t( paladin_t* p ) :
@@ -525,7 +450,7 @@ void shield_of_the_righteous_buff_t::expire_override( int expiration_stacks, tim
 
 struct shield_of_the_righteous_t : public holy_power_consumer_t<paladin_melee_attack_t>
 {
-  shield_of_the_righteous_t( paladin_t* p, const std::string& options_str ) :
+  shield_of_the_righteous_t( paladin_t* p, util::string_view options_str ) :
     holy_power_consumer_t( "shield_of_the_righteous", p, p -> spec.shield_of_the_righteous )
   {
     parse_options( options_str );
@@ -834,7 +759,6 @@ action_t* paladin_t::create_action_protection( util::string_view name, const std
   if ( name == "blessing_of_spellwarding"  ) return new blessing_of_spellwarding_t ( this, options_str );
   if ( name == "guardian_of_ancient_kings" ) return new guardian_of_ancient_kings_t( this, options_str );
   if ( name == "hammer_of_the_righteous"   ) return new hammer_of_the_righteous_t  ( this, options_str );
-  if ( name == "word_of_glory"             ) return new word_of_glory_t            ( this, options_str );
   if ( name == "shield_of_the_righteous"   ) return new shield_of_the_righteous_t  ( this, options_str );
   if ( name == "moment_of_glory"           ) return new moment_of_glory_t          ( this, options_str );
 
@@ -879,7 +803,9 @@ void paladin_t::create_buffs_protection()
         -> set_default_value( find_spell( 337848 ) -> effectN( 1 ).percent() );
   buffs.shielding_words = make_buff<absorb_buff_t>( this, "shielding_words", conduit.shielding_words )
         -> set_absorb_source( get_stats( "shielding_words" ) );
-  buffs.shining_light_stacks = make_buff( this, "shining_light_stacks", find_spell( 182104 ) );
+  buffs.shining_light_stacks = make_buff( this, "shining_light_stacks", find_spell( 182104 ) )
+  // Kind of lazy way to make sure that SL only triggers for prot. That spelldata doesn't have to be used anywhere else so /shrug
+    -> set_trigger_spell( find_specialization_spell( "Shining Light" ) );
   buffs.shining_light_free = make_buff( this, "shining_light_free", find_spell( 327510 ) );
 
   buffs.royal_decree = make_buff( this, "royal_decree", find_spell( 340147 ) );
