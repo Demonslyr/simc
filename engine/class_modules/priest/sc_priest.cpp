@@ -354,6 +354,7 @@ struct fae_guardians_t final : public priest_spell_t
 struct wrathful_faerie_t final : public priest_spell_t
 {
   double insanity_gain;
+  bool bwonsamdis_pact_wrathful;
 
   wrathful_faerie_t( priest_t& p )
     : priest_spell_t( "wrathful_faerie", p, p.find_spell( 342132 ) ),
@@ -364,6 +365,7 @@ struct wrathful_faerie_t final : public priest_spell_t
     energize_amount    = insanity_gain;
     background         = true;
     cooldown->duration = data().internal_cooldown();
+    bwonsamdis_pact_wrathful = util::str_compare_ci( priest().options.bwonsamdis_pact_mask_type, "wrathful" );
   }
 
   void adjust_energize_amount()
@@ -371,7 +373,7 @@ struct wrathful_faerie_t final : public priest_spell_t
     if ( !priest().legendary.bwonsamdis_pact->ok() )
       return;
 
-    if ( util::str_compare_ci( priest().options.bwonsamdis_pact_mask_type, "wrathful" ) )
+    if ( bwonsamdis_pact_wrathful )
     {
       energize_amount = insanity_gain * 2;
       sim->print_debug( "Bwonsamdi's Pact adjusts Wrathful Faerie insanity gain to {}", energize_amount );
@@ -557,6 +559,23 @@ struct unholy_nova_t final : public priest_spell_t
       child_unholy_nova_healing->execute();
     }
 
+    if ( priest().legendary.pallid_command->ok() )
+    {
+      if ( priest().specialization() == PRIEST_SHADOW )
+      {
+        auto spawned_pets = priest().pets.rattling_mage.spawn();
+      }
+      else if ( priest().specialization() == PRIEST_DISCIPLINE )
+      {
+        auto spawned_pets = priest().pets.cackling_chemist.spawn();
+      }
+      else
+      {
+        sim->print_debug( "{} in current spec: {} does not have support for Pallid Command.", priest(),
+                          priest().specialization() );
+      }
+    }
+
     priest_spell_t::impact( s );
   }
 };
@@ -626,12 +645,14 @@ struct mindgames_t final : public priest_spell_t
   propagate_const<mindgames_healing_reversal_t*> child_mindgames_healing_reversal;
   propagate_const<mindgames_damage_reversal_t*> child_mindgames_damage_reversal;
   double insanity_gain;
+  timespan_t shattered_perceptions_increase;
 
   mindgames_t( priest_t& p, util::string_view options_str )
     : priest_spell_t( "mindgames", p, p.covenant.mindgames ),
       child_mindgames_healing_reversal( nullptr ),
       child_mindgames_damage_reversal( nullptr ),
-      insanity_gain( p.find_spell( 323706 )->effectN( 2 ).base_value() )
+      insanity_gain( p.find_spell( 323706 )->effectN( 2 ).base_value() ),
+      shattered_perceptions_increase( p.conduits.shattered_perceptions->effectN( 3 ).time_value() )
   {
     parse_options( options_str );
 
@@ -660,7 +681,6 @@ struct mindgames_t final : public priest_spell_t
     // Mindgames gives a total of 20 insanity
     // 10 if the target deals enough dmg to break the shield
     // 10 if the targets heals enough to break the shield
-    // TODO: Figure out how the crit buff works from Shadow Word: Manipulation
     double insanity = 0;
     // Healing reversal creates damage
     if ( child_mindgames_healing_reversal )
@@ -674,6 +694,22 @@ struct mindgames_t final : public priest_spell_t
     {
       insanity += insanity_gain;
       child_mindgames_damage_reversal->execute();
+    }
+
+    // TODO: Determine what happens if you break both shields
+    if ( priest().legendary.shadow_word_manipulation->ok() )
+    {
+      timespan_t max_time_seconds = priest().covenant.mindgames->duration() +
+                                    priest().legendary.shadow_word_manipulation->effectN( 1 ).time_value() +
+                                    ( priest().conduits.shattered_perceptions->ok() * shattered_perceptions_increase );
+      // You get 1 stack for each second remaining on Mindgames as a shield expires
+      timespan_t stacks = timespan_t::from_seconds( priest().options.shadow_word_manipulation_seconds_remaining ) +
+                          ( priest().conduits.shattered_perceptions->ok() * shattered_perceptions_increase );
+      // the delay value is the inverse of how much time is remaining
+      // i.e. if you have 6s remaining we need to delay the buff by 2 seconds
+      timespan_t delay = max_time_seconds - stacks;
+      make_event( *sim, delay,
+                  [ this, stacks ] { priest().buffs.shadow_word_manipulation->trigger( stacks.total_seconds() ); } );
     }
 
     priest().generate_insanity( insanity, priest().gains.insanity_mindgames, s->action );
@@ -1256,7 +1292,18 @@ private:
     if ( priest != nullptr && priest->legendary.bwonsamdis_pact->ok() &&
          util::str_compare_ci( priest->options.bwonsamdis_pact_mask_type, "benevolent" ) )
     {
-      modifier += ( default_value * 2 );
+      // Math is done in the wrong place
+      // (100% base + 100% increase) * 2 = 400% --- should be 100% base + (100% increase * 2) = 300%
+      // https://github.com/SimCMinMax/WoW-BugTracker/issues/852
+      if ( priest->bugs )
+      {
+        modifier = ( modifier + default_value ) * 2;
+      }
+      else
+      {
+        modifier += ( default_value * 2 );
+      }
+
       sim->print_debug( "Bwonsamdi's Pact Modifier set to {}", modifier );
     }
     else
@@ -1264,6 +1311,19 @@ private:
       modifier += default_value;
     }
     return modifier;
+  }
+};
+
+struct rigor_mortis_t final : public priest_buff_t<buff_t>
+{
+  timespan_t rigor_mortis_duration;
+  rigor_mortis_t( priest_t& p )
+    : base_t( p, "rigor_mortis", p.find_spell( 357165 ) ), rigor_mortis_duration( p.find_spell( 356467 )->duration() )
+  {
+    // 1st effect is for healing
+    set_default_value_from_effect( 2 );
+    // Duration is in the legendary spell itself, base aura is infinite
+    set_duration( rigor_mortis_duration );
   }
 };
 }  // namespace buffs
@@ -1536,9 +1596,9 @@ double priest_t::composite_spell_crit_chance() const
   return sc;
 }
 
-double priest_t::composite_player_pet_damage_multiplier( const action_state_t* s ) const
+double priest_t::composite_player_pet_damage_multiplier( const action_state_t* s, bool guardian ) const
 {
-  double m = player_t::composite_player_pet_damage_multiplier( s );
+  double m = player_t::composite_player_pet_damage_multiplier( s, guardian );
   m *= ( 1.0 + specs.shadow_priest->effectN( 3 ).percent() );
   return m;
 }
@@ -1823,6 +1883,7 @@ void priest_t::init_spells()
   legendary.bwonsamdis_pact            = find_runeforge_legendary( "Bwonsamdi's Pact" );
   legendary.shadow_word_manipulation   = find_runeforge_legendary( "Shadow Word: Manipulation" );
   legendary.spheres_harmony            = find_runeforge_legendary( "Spheres' Harmony" );
+  legendary.pallid_command             = find_runeforge_legendary( "Pallid Command" );
   // Disc legendaries
   legendary.kiss_of_death    = find_runeforge_legendary( "Kiss of Death" );
   legendary.the_penitent_one = find_runeforge_legendary( "The Penitent One" );
@@ -1871,6 +1932,12 @@ void priest_t::create_buffs()
   // Shared buffs
   buffs.the_penitent_one = make_buff( this, "the_penitent_one", legendary.the_penitent_one->effectN( 1 ).trigger() )
                                ->set_trigger_spell( legendary.the_penitent_one );
+
+  // Runeforge Buffs
+  buffs.shadow_word_manipulation = make_buff( this, "shadow_word_manipulation", find_spell( 357028 ) )
+                                       ->set_pct_buff_type( STAT_PCT_BUFF_CRIT )
+                                       ->set_default_value_from_effect_type( A_MOD_ALL_CRIT_CHANCE );
+  buffs.rigor_mortis = make_buff<buffs::rigor_mortis_t>( *this )->set_default_value_from_effect( 2 );
 
   // Covenant Buffs
   buffs.fae_guardians        = make_buff<buffs::fae_guardians_t>( *this );
@@ -2078,6 +2145,9 @@ void priest_t::create_options()
   add_option( opt_int( "priest.ascended_eruption_additional_targets", options.ascended_eruption_additional_targets ) );
   add_option( opt_int( "priest.cauterizing_shadows_allies", options.cauterizing_shadows_allies ) );
   add_option( opt_string( "priest.bwonsamdis_pact_mask_type", options.bwonsamdis_pact_mask_type ) );
+  add_option( opt_int( "priest.shadow_word_manipulation_seconds_remaining",
+                       options.shadow_word_manipulation_seconds_remaining, 0, 8 ) );
+  add_option( opt_int( "priest.pallid_command_allies", options.pallid_command_allies, 0, 50 ) );
 }
 
 std::string priest_t::create_profile( save_e type )

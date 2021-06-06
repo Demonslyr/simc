@@ -314,6 +314,17 @@ struct soul_rot_t : public warlock_spell_t
     p()->buffs.soul_rot->trigger();
   }
 
+  void impact( action_state_t* s ) override
+  {
+    warlock_spell_t::impact( s );
+
+    if ( p()->legendary.decaying_soul_satchel.ok() )
+    {
+      p()->buffs.decaying_soul_satchel_haste->trigger();
+      p()->buffs.decaying_soul_satchel_crit->trigger();
+    }
+  }
+
   double composite_ta_multiplier( const action_state_t* s ) const override
   {
     double pm = warlock_spell_t::composite_ta_multiplier( s );
@@ -396,6 +407,12 @@ struct decimating_bolt_t : public warlock_spell_t
       value *= 0.4;
     p()->buffs.decimating_bolt->trigger( 3, value );
     
+    if ( p()->legendary.shard_of_annihilation.ok() )
+    {
+      //Note: For Drain Soul, 3 stacks appear to be triggered but all are removed when the Decimating Bolt buff is
+      p()->buffs.shard_of_annihilation->trigger( 3 );
+    }
+
     warlock_spell_t::impact( s );
     
     auto e = make_event<ground_aoe_event_t>( *sim, p(), ground_aoe_params_t()
@@ -463,9 +480,11 @@ warlock_td_t::warlock_td_t( player_t* target, warlock_t& p )
   dots_unstable_affliction = target->get_dot( "unstable_affliction", &p );
   dots_vile_taint          = target->get_dot( "vile_taint", &p );
 
-  debuffs_haunt =
-      make_buff( *this, "haunt", source->find_spell( 48181 ) )->set_refresh_behavior( buff_refresh_behavior::PANDEMIC );
+  debuffs_haunt = make_buff( *this, "haunt", source->find_spell( 48181 ) )
+                      ->set_refresh_behavior( buff_refresh_behavior::PANDEMIC )
+                      ->set_default_value_from_effect( 2 );
   debuffs_shadow_embrace = make_buff( *this, "shadow_embrace", source->find_spell( 32390 ) )
+                               ->set_default_value_from_effect( 1 )
                                ->set_refresh_behavior( buff_refresh_behavior::DURATION )
                                ->set_max_stack( 3 );
 
@@ -473,9 +492,11 @@ warlock_td_t::warlock_td_t( player_t* target, warlock_t& p )
   dots_immolate          = target->get_dot( "immolate", &p );
 
   debuffs_eradication = make_buff( *this, "eradication", source->find_spell( 196414 ) )
-                            ->set_refresh_behavior( buff_refresh_behavior::DURATION );
+                            ->set_refresh_behavior( buff_refresh_behavior::DURATION )
+                            ->set_default_value_from_effect( 1 );
   debuffs_roaring_blaze = make_buff( *this, "roaring_blaze", source->find_spell( 265931 ) );
-  debuffs_shadowburn    = make_buff( *this, "shadowburn", source->find_spell( 17877 ) );
+  debuffs_shadowburn    = make_buff( *this, "shadowburn", source->find_spell( 17877 ) )
+                              ->set_default_value( source->find_spell( 245731 )->effectN( 1 ).base_value() );
   debuffs_havoc         = make_buff( *this, "havoc", source->find_specialization_spell( 80240 ) )
                       ->set_duration( source->find_specialization_spell( 80240 )->duration() +
                                       source->find_specialization_spell( 335174 )->effectN( 1 ).time_value() )
@@ -506,7 +527,8 @@ warlock_td_t::warlock_td_t( player_t* target, warlock_t& p )
   // Demo
   dots_doom         = target->get_dot( "doom", &p );
 
-  debuffs_from_the_shadows = make_buff( *this, "from_the_shadows", source->find_spell( 270569 ) );
+  debuffs_from_the_shadows = make_buff( *this, "from_the_shadows", source->find_spell( 270569 ) )
+                                 ->set_default_value_from_effect( 1 );
 
   target->register_on_demise_callback( &p, [ this ]( player_t* ) { target_demise(); } );
 }
@@ -547,6 +569,11 @@ void warlock_td_t::target_demise()
     {
       warlock.buffs.soul_tithe->trigger();
     }
+
+    if ( warlock.legendary.languishing_soul_detritus.ok() )
+    {
+      warlock.buffs.languishing_soul_detritus->trigger();
+    }
   }
 
   if ( debuffs_haunt->check() )
@@ -558,10 +585,17 @@ void warlock_td_t::target_demise()
 
   if ( debuffs_shadowburn->check() )
   {
-    warlock.sim->print_log( "Player {} demised. Warlock {} reset Shadowburn's cooldown.", target->name(),
+    if ( warlock.min_version_check( VERSION_9_1_0 ) )
+    {
+      warlock.sim->print_log( "Player {} demised. Warlock {} refunds one charge of Shadowburn.", target->name(),
                             warlock.name() );
+      
+      warlock.cooldowns.shadowburn->reset( true );
+    }
+   
+    warlock.sim->print_log( "Player {} demised. Warlock {} gains 1 shard from Shadowburn.", target->name(), warlock.name() );
 
-    warlock.resource_gain( RESOURCE_SOUL_SHARD, warlock.find_spell( 245731 )->effectN( 1 ).base_value() / 10,
+    warlock.resource_gain( RESOURCE_SOUL_SHARD, debuffs_shadowburn->check_value() / 10,
                            warlock.gains.shadowburn_refund );
   }
 
@@ -595,6 +629,41 @@ static void accumulate_seed_of_corruption( warlock_td_t* td, double amount )
   }
 }
 
+int warlock_td_t::count_affliction_dots()
+{
+  int count = 0;
+
+  if ( dots_agony->is_ticking() )
+    count++;
+
+  if ( dots_corruption->is_ticking() )
+    count++;
+
+  if ( dots_unstable_affliction->is_ticking() )
+    count++;
+
+  if ( dots_vile_taint->is_ticking() )
+    count++;
+
+  if ( dots_phantom_singularity->is_ticking() )
+    count++;
+
+  if ( dots_soul_rot->is_ticking() )
+    count++;
+
+  if ( dots_siphon_life->is_ticking() )
+    count++;
+
+  if ( dots_scouring_tithe->is_ticking() )
+    count++;
+
+  if ( dots_impending_catastrophe->is_ticking() )
+    count++;
+
+  return count;
+}
+
+
 warlock_t::warlock_t( sim_t* sim, util::string_view name, race_e r )
   : player_t( sim, WARLOCK, name, r ),
     havoc_target( nullptr ),
@@ -624,6 +693,7 @@ warlock_t::warlock_t( sim_t* sim, util::string_view name, race_e r )
   cooldowns.demonic_tyrant      = get_cooldown( "summon_demonic_tyrant" );
   cooldowns.scouring_tithe      = get_cooldown( "scouring_tithe" );
   cooldowns.infernal            = get_cooldown( "summon_infernal" );
+  cooldowns.shadowburn          = get_cooldown( "shadowburn" );
 
   resource_regeneration             = regen_type::DYNAMIC;
   regen_caches[ CACHE_HASTE ]       = true;
@@ -655,11 +725,24 @@ double warlock_t::composite_player_target_multiplier( player_t* target, school_e
   if ( specialization() == WARLOCK_AFFLICTION )
   {
     if ( td->debuffs_haunt->check() )
-      m *= 1.0 + td->debuffs_haunt->data().effectN( 2 ).percent();
+      m *= 1.0 + td->debuffs_haunt->check_value();
 	  
-	  //TOCHECK 
-	  m *= 1.0 + ( ( td->debuffs_shadow_embrace->data().effectN( 1 ).percent() ) * ( 1 + conduit.cold_embrace.percent() )
-		  * td->debuffs_shadow_embrace->check() );
+	if ( !min_version_check( VERSION_9_1_0 ) )
+    {
+      m *= 1.0 + ( ( td->debuffs_shadow_embrace->check_value() ) * ( 1 + conduit.cold_embrace.percent() )
+           * td->debuffs_shadow_embrace->check() );
+    }
+
+    if ( min_version_check( VERSION_9_1_0 ) && talents.shadow_embrace->ok() )
+    {
+      m *= 1.0 + td->debuffs_shadow_embrace->check_stack_value();
+    }
+  }
+
+  if ( specialization() == WARLOCK_DESTRUCTION )
+  {
+    if ( td->debuffs_eradication->check() )
+      m *= 1.0 + td->debuffs_eradication->check_value();
   }
 
   return m;
@@ -672,9 +755,9 @@ double warlock_t::composite_player_multiplier( school_e school ) const
   return m;
 }
 
-double warlock_t::composite_player_pet_damage_multiplier( const action_state_t* s ) const
+double warlock_t::composite_player_pet_damage_multiplier( const action_state_t* s, bool guardian ) const
 {
-  double m = player_t::composite_player_pet_damage_multiplier( s );
+  double m = player_t::composite_player_pet_damage_multiplier( s, guardian );
 
   if ( specialization() == WARLOCK_DESTRUCTION )
   {
@@ -699,6 +782,39 @@ double warlock_t::composite_player_pet_damage_multiplier( const action_state_t* 
   {
     m *= 1.0 + spec.affliction->effectN( 3 ).percent();
   }
+  return m;
+}
+
+double warlock_t::composite_player_target_pet_damage_multiplier( player_t* target, bool guardian ) const
+{
+  double m = player_t::composite_player_target_pet_damage_multiplier( target, guardian );
+
+  if ( !min_version_check( VERSION_9_1_0 ) )
+    return m;
+
+  const warlock_td_t* td = get_target_data( target );
+
+  if ( specialization() == WARLOCK_AFFLICTION )
+  {
+    if ( td->debuffs_haunt->check() )
+    {
+      m *= 1.0 + td->debuffs_haunt->data().effectN( guardian ? 4 : 3 ).percent();
+    }
+
+    if ( talents.shadow_embrace->ok() )
+    {
+      m *= 1.0 + td->debuffs_shadow_embrace->data().effectN( guardian ? 3 : 2 ).percent();
+    }
+  }
+
+  if ( specialization() == WARLOCK_DESTRUCTION )
+  {
+    if ( td->debuffs_eradication->check() )
+    {
+      m *= 1.0 + td->debuffs_eradication->data().effectN( guardian ? 3 : 2 ).percent();
+    }
+  }
+
   return m;
 }
 
@@ -894,6 +1010,20 @@ void warlock_t::create_buffs()
 
   buffs.demonic_synergy = make_buff( this, "demonic_synergy", find_spell( 337060 ) )
                               ->set_default_value( legendary.relic_of_demonic_synergy->effectN( 1 ).percent() * ( this->specialization() == WARLOCK_DEMONOLOGY ? 1.5 : 1.0 ) );
+
+  buffs.languishing_soul_detritus = make_buff( this, "languishing_soul_detritus", find_spell( 356255 ) )
+                                        ->set_pct_buff_type( STAT_PCT_BUFF_CRIT )
+                                        ->set_default_value( find_spell( 356255 )->effectN( 2 ).percent() );
+
+  buffs.shard_of_annihilation = make_buff( this, "shard_of_annihilation", find_spell( 356342 ) );
+
+  buffs.decaying_soul_satchel_haste = make_buff( this, "decaying_soul_satchel_haste", find_spell( 356369 ) )
+                                          ->set_pct_buff_type( STAT_PCT_BUFF_HASTE )
+                                          ->set_default_value( find_spell( 356369 )->effectN( 1 ).percent() );
+
+  buffs.decaying_soul_satchel_crit = make_buff( this, "decaying_soul_satchel_crit", find_spell( 356369 ) )
+                                         ->set_pct_buff_type( STAT_PCT_BUFF_CRIT )
+                                         ->set_default_value( find_spell( 356369 )->effectN( 2 ).percent() );
 }
 
 void warlock_t::init_spells()
@@ -907,6 +1037,8 @@ void warlock_t::init_spells()
   // General
   spec.nethermancy = find_spell( 86091 );
   spec.demonic_embrace = find_spell( 288843 );
+
+  version_9_1_0_data = find_spell( 356342 ); //For 9.1 PTR version checking, Shard of Annihilation data
 
   // Specialization Spells
   spec.immolate         = find_specialization_spell( "Immolate" );
@@ -930,6 +1062,11 @@ void warlock_t::init_spells()
   legendary.sacrolashs_dark_strike = find_runeforge_legendary( "Sacrolash's Dark Strike" );
   //Wrath is implemented here to catch any potential cross-spec periodic effects
   legendary.wrath_of_consumption = find_runeforge_legendary("Wrath of Consumption");
+
+  legendary.languishing_soul_detritus = find_runeforge_legendary( "Languishing Soul Detritus" );
+  legendary.shard_of_annihilation = find_runeforge_legendary( "Shard of Annihilation" );
+  legendary.decaying_soul_satchel = find_runeforge_legendary( "Decaying Soul Satchel" );
+  legendary.contained_perpetual_explosion = find_runeforge_legendary( "Contained Perpetual Explosion" );
 
   // Conduits
   conduit.catastrophic_origin  = find_conduit_spell( "Catastrophic Origin" );   // Venthyr
@@ -1299,6 +1436,28 @@ void warlock_t::malignancy_reduction_helper()
     procs.corrupting_leer->occur();
     cooldowns.darkglare->adjust( -5.0_s );  // Value is in the description so had to hardcode it
   }
+}
+
+// Use this as a helper function when two versions are needed simultaneously (ie a PTR cycle)
+// It must be adjusted manually over time, and any use of it should be removed once a patch goes live
+// Returns TRUE if actor's dbc version >= version specified
+// When checking VERSION_PTR, will only return true if PTR dbc is being used, regardless of version number
+bool warlock_t::min_version_check( version_check_e version ) const
+{
+  //If we ever get a full DBC version string checker, replace these returns with that function
+  switch ( version )
+  {
+    case VERSION_PTR:
+      return is_ptr();
+    case VERSION_9_1_0:
+      return !( version_9_1_0_data == spell_data_t::not_found() );
+    case VERSION_9_0_5:
+    case VERSION_9_0_0:
+    case VERSION_ANY:
+      return true;
+  }
+
+  return false;
 }
 
 // Function for returning the the number of imps that will spawn in a specified time period.

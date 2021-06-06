@@ -445,7 +445,7 @@ Effects          :
                    Base Value: 5 | Scaled Value: 5 | PvP Coefficient: 1.00000 | Misc Value: 6112 | Misc Value 2: 0xd4e | Target: Unknown(43)
 #2 (id=819687)   : Dummy (3)
                    Base Value: 30 | Scaled Value: 30 | PvP Coefficient: 1.00000
-Description      : Summons a Windfury Totem with $s1 health at the feet of the caster for $d.  Party members within $s2 yds have a $327942h% chance when they auto-attack to swing an extra time.
+Description      : Summons a Windfury Totem with $s1 health at the feet of the caster for $d.  Party members within $s2 yds have a $?a343211[$327942h][${$327942h-$343211m1}]% chance when they auto-attack to swing an extra time.
 
 Name             : Flametongue Attack (id=10444) [Spell Family (11)] 
 Class            : Shaman
@@ -10348,6 +10348,7 @@ Range            : 40 yards
 Cast Time        : 2.5 seconds
 GCD              : 1.5 seconds
 Cooldown         : 90 seconds
+Labels           : 976
 Affecting spells : Maelstrom Weapon (187881 effect#1), Flash Flood (280615 effect#1)
 Family Flags     : 65
 Attributes       : ........ ........ x....... ........   ........ ..x..... ........ ........ 
@@ -10489,6 +10490,7 @@ Range            : 40 yards
 GCD              : 1.5 seconds
 Duration         : 30 seconds
 Cooldown         : 60 seconds
+Labels           : 976
 Proc Chance      : 101%
 Proc Flags       : ....x... ..x.x.x. x....... ........ 
                  : Yellow Melee, Generic Heal, Generic Hostile Spell, Magic Heal, Magic Hostile Spell
@@ -10598,6 +10600,7 @@ GCD              : 1.5 seconds
 Velocity         : 45 yards/sec
 Charges          : 1 (45 seconds cooldown)
 Category         : 1893
+Labels           : 976
 Affecting spells : Maelstrom Weapon (187881 effects: #1, #2)
 Family Flags     : 25
 Attributes       : ........ ........ x.x..... ........   ........ ........ ........ ........ 
@@ -10712,10 +10715,9 @@ Spell Type       : None
 Range            : 40 yards
 Duration         : 120 seconds
 Internal Cooldown: 0.5 seconds
-Proc Chance      : 10%
+Proc Chance      : 20%
 Proc Flags       : ..x..... ........ ........ ........ 
                  : White Melee
-Affecting spells : Windfury Totem (343211 effect#1)
 Family Flags     : 40
 Attributes       : ........ ........ ........ ........   ........ ...x.... ........ ........ 
                  : ........ ........ ........ ........   ........ ........ ........ ......x. 
@@ -10729,7 +10731,7 @@ Effects          :
 #1 (id=819684)   : Apply Aura (6) | Dummy (4)
                    Base Value: 1 | Scaled Value: 1 | PvP Coefficient: 1.00000 | Target: Unknown(35)
 Description      : $@spelldesc8512
-Tooltip          : Your auto-attacks have a $h% chance to instantly attack again.
+Tooltip          : Your auto-attacks have a chance to instantly attack again.
 
 Name             : Fae Transfusion (desc=Night Fae) (id=328923) [Spell Family (11)] 
 Class            : Shaman
@@ -10742,6 +10744,7 @@ Range            : 40 yards
 GCD              : 1.5 seconds
 Duration         : 3 seconds
 Cooldown         : 120 seconds
+Labels           : 976
 Affecting spells : Essential Extraction (339183 effect#1)
 Family Flags     : 125
 Attributes       : ........ ........ x....... ........   ..x...x. ........ ........ .....x.. 
@@ -12495,10 +12498,8 @@ Attributes       : ......x. ........ ........ ........   ........ ........ .....
                  : ........ ........ ........ ........   
                  : Passive (6)
 Effects          :
-#1 (id=844840)   : Apply Aura (6) | Add Flat Modifier (107): Spell Proc Chance (18)
-                   Base Value: 10 | Scaled Value: 10 | PvP Coefficient: 1.00000 | Misc Value: 18 | Target: Self (1)
-                   Affected Spells: Windfury Totem (327942)
-                   Family Flags: 40
+#1 (id=844840)   : Apply Aura (6) | Dummy (4)
+                   Base Value: 10 | Scaled Value: 10 | PvP Coefficient: 1.00000 | Target: Self (1)
 Description      : Windfury Totem has an additional $s1% chance to grant party members an extra swing.
 
 Name             : Fire Elemental Totem (desc=Rank 2) (id=343226) [Spell Family (11), Passive] 

@@ -2219,6 +2219,8 @@ Effects          :
                    Base Value: 10 | Scaled Value: 10 | PvP Coefficient: 1.00000 | Target: Self (1)
 #3 (id=817013)   : Apply Aura (6) | Unknown(307)
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Misc Value: 928 | Target: Self (1)
+#4 (id=892545)   : Apply Aura (6) | Unknown(307)
+                   Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Misc Value: 1327 | Target: Self (1)
 Description      : Makes your next Mage spell with a cast time shorter than $s2 sec castable while moving. Unaffected by the global cooldown and castable while casting.
 Tooltip          : Able to move while casting spells.
 
@@ -4403,7 +4405,7 @@ Spell Type       : None
 Duration         : 60 seconds
 Stacks           : 5 maximum
 Proc Chance      : 101%
-Attributes       : ........ ........ ........ .......x   ........ ........ ........ ........ 
+Attributes       : ........ ........ ........ .......x   ........ ..x..... ........ ........ 
                  : ........ ........ ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   ........ ........ ........ ........ 
@@ -5416,8 +5418,8 @@ Effects          :
 #1 (id=355674)   : Apply Aura (6) | Absorb Damage (69)
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Misc Value: 0x7f | Target: Self (1)
                    Affected School(s): All
-#2 (id=355675)   : Apply Aura (6) | Proc Trigger Spell (42): Blazing Barrier
-                   Base Value: 20 | Scaled Value: 20 | PvP Coefficient: 1.00000 | Trigger Spell: 235314 | Target: Self (1)
+#2 (id=355675)   : Apply Aura (6) | Dummy (4)
+                   Base Value: 20 | Scaled Value: 20 | PvP Coefficient: 1.00000 | Target: Self (1)
 #3 (id=355719)   : Apply Aura (6) | Modify Damage Taken% (87)
                    Base Value: 0 | Scaled Value: 0 | PvP Coefficient: 1.00000 | Misc Value: 0x1 | Target: Self (1)
                    Affected School(s): Physical
@@ -5436,7 +5438,6 @@ Spell Level      : 1
 Range            : 100 yards
 Labels           : 897: Blazing Barrier (321708 effect#1)
 Affecting spells : Arcane Power (12042 effects: #1, #3), Rune of Power (116014 effects: #1, #4), Incanter's Flow (116267 effects: #1, #3), Fire Mage (137019 effects: #1, #2), Frost Mage (137020 effects: #1, #2), Arcane Mage (137021 effects: #1, #2), Combustion (190319 effect#1), Bone Chilling (205766 effects: #1, #2), Norgannon's Foresight (236380 effect#1), Deathborne (324220 effects: #2, #7), Siphoned Malice (337090 effects: #1, #2)
-Triggered by     : Blazing Barrier (235313)
 Family Flags     : 3
 Attributes       : ........ ........ ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   ........ ........ ........ ........ 
@@ -8942,6 +8943,7 @@ Cast Time        : 1.5 seconds
 GCD              : 1.5 seconds
 Duration         : 10 seconds
 Cooldown         : 30 seconds
+Labels           : 976
 Proc Chance      : 100%
 Proc Flags       : ........ x...x... x.x..... ........ 
                  : Yellow Ranged, Generic Hostile Spell, Magic Hostile Spell, Periodic
@@ -9008,7 +9010,8 @@ Spell Level      : 48
 GCD              : 1.5 seconds
 Duration         : 4 seconds
 Cooldown         : 60 seconds
-Labels           : 1048: Discipline of the Grove (336992 effect#1)
+Labels           : 976
+                 : 1048: Discipline of the Grove (336992 effect#1)
 Attributes       : ........ ........ x....... ........   ......x. ........ ........ ........ 
                  : ........ ........ ........ ........   ........ ........ ........ ........ 
                  : ........ ........ ........ ........   ........ .....x.. ........ ........ 
@@ -9044,6 +9047,7 @@ Cast Time        : 1.5 seconds
 GCD              : 1.5 seconds
 Duration         : 25 seconds
 Cooldown         : 90 seconds
+Labels           : 976
 Internal Cooldown: 6 seconds
 Stacks           : 3 initial, 3 maximum
 Proc Chance      : 100%
@@ -9791,7 +9795,8 @@ Cast Time        : 1.5 seconds
 GCD              : 1.5 seconds
 Duration         : 25 seconds
 Cooldown         : 180 seconds
-Labels           : 1049: Gift of the Lich (336999 effect#1)
+Labels           : 976
+                 : 1049: Gift of the Lich (336999 effect#1)
 Proc Chance      : 101%
 Proc Flags       : ........ ....x... x....... ........ 
                  : Generic Hostile Spell, Magic Hostile Spell
@@ -11603,7 +11608,7 @@ Effects          :
                    Base Value: 3000 | Scaled Value: 3000 | PvP Coefficient: 1.00000 | Target: Self (1)
 #2 (id=886674)   : Apply Aura (6) | Dummy (4)
                    Base Value: 45000 | Scaled Value: 45000 | PvP Coefficient: 1.00000 | Target: Self (1)
-Description      : Consuming $?c1[Clearcast]?c2[a Fire Blast charge][Brain Freeze] reduces Mirrors of Torment cooldown by ${$s1/1000} sec. If Mirrors of Torment is dispelled the cooldown is reduced by ${$s2/1000} sec.
+Description      : Consuming $?c1[Clearcast]?c2[a Fire Blast charge][Brain Freeze] reduces Mirrors of Torment's cooldown by ${$s1/1000} sec. If Mirrors of Torment is dispelled the cooldown is reduced by ${$s2/1000} sec.
 
 Name             : Timebreaker's Paradox (id=356346) 
 Class            : Mage

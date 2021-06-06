@@ -274,6 +274,7 @@ public:
     action_t* arcane_assault;
     action_t* arcane_echo;
     action_t* conflagration_flare_up;
+    action_t* harmonic_echo;
     action_t* ignite;
     action_t* legendary_frozen_orb;
     action_t* legendary_meteor;
@@ -372,6 +373,7 @@ public:
     buff_t* disciplinary_command_frost; // Hidden buff
     buff_t* disciplinary_command_fire; // Hidden buff
     buff_t* expanded_potential;
+    buff_t* heart_of_the_fae;
 
 
     // Covenant Abilities
@@ -398,6 +400,7 @@ public:
     cooldown_t* frost_nova;
     cooldown_t* frozen_orb;
     cooldown_t* icy_veins;
+    cooldown_t* mirrors_of_torment;
     cooldown_t* phoenix_flames;
     cooldown_t* presence_of_mind;
   } cooldowns;
@@ -650,6 +653,9 @@ public:
     item_runeforge_t disciplinary_command;
     item_runeforge_t expanded_potential;
     item_runeforge_t grisly_icicle;
+    item_runeforge_t harmonic_echo;
+    item_runeforge_t heart_of_the_fae;
+    item_runeforge_t sinful_delight;
   } runeforge;
 
   // Soulbind Conduits
@@ -725,7 +731,7 @@ public:
   double composite_mastery() const override;
   double composite_player_critical_damage_multiplier( const action_state_t* ) const override;
   double composite_player_multiplier( school_e ) const override;
-  double composite_player_pet_damage_multiplier( const action_state_t* ) const override;
+  double composite_player_pet_damage_multiplier( const action_state_t*, bool ) const override;
   double composite_player_target_multiplier( player_t*, school_e ) const override;
   double composite_spell_crit_chance() const override;
   double composite_rating_multiplier( rating_e ) const override;
@@ -786,6 +792,7 @@ public:
   void      trigger_arcane_charge( int stacks = 1 );
   bool      trigger_crowd_control( const action_state_t* s, spell_mechanic type, timespan_t duration = timespan_t::min() );
   void      trigger_disciplinary_command( school_e );
+  void      trigger_sinful_delight( specialization_e );
 };
 
 namespace pets {
@@ -1023,17 +1030,30 @@ struct combustion_t final : public buff_t
 // the Fireball also triggers a new instance of Expanded Potential?
 struct expanded_potential_buff_t : public buff_t
 {
+  mage_t* mage;
+
   expanded_potential_buff_t( mage_t* p, util::string_view name, const spell_data_t* spell_data ) :
-    buff_t( p, name, spell_data )
+    buff_t( p, name, spell_data ), mage( p )
   { }
 
   void decrement( int stacks, double value ) override
   {
-    auto mage = debug_cast<mage_t*>( player );
+    // Sinful Delight only triggers when Clearcasting is consumed.
+    if ( check() )
+      mage->trigger_sinful_delight( MAGE_ARCANE );
+
     if ( check() && mage->buffs.expanded_potential->check() )
       mage->buffs.expanded_potential->expire();
     else
       buff_t::decrement( stacks, value );
+  }
+
+  void refresh( int stacks, double value, timespan_t duration ) override
+  {
+    buff_t::refresh( stacks, value, duration );
+
+    // Sinful Delight triggers when Brain Freeze refreshes.
+    mage->trigger_sinful_delight( MAGE_FROST );
   }
 };
 
@@ -1656,6 +1676,19 @@ public:
       if ( triggers.radiant_spark && spark_dot->is_ticking() )
       {
         auto spark_debuff = td->debuffs.radiant_spark_vulnerability;
+
+        // Handle Harmonic Echo before changing the stack number
+        // TODO: Currently only triggers 3 times, on stacks 1, 2 and 3.
+        if ( p()->runeforge.harmonic_echo.ok()
+          && spark_debuff->check() > 0
+          && spark_debuff->check() < spark_debuff->max_stack() )
+        {
+          auto echo = p()->action.harmonic_echo;
+          echo->base_dd_min = echo->base_dd_max = p()->runeforge.harmonic_echo->effectN( 1 ).percent() * s->result_total;
+          echo->set_target( s->target );
+          echo->execute();
+        }
+
         if ( spark_debuff->at_max_stacks() )
         {
           spark_debuff->expire( p()->bugs ? 30_ms : 0_ms );
@@ -4153,6 +4186,12 @@ struct fire_blast_t final : public fire_mage_spell_t
     base_crit += p->spec.fire_blast_2->effectN( 1 ).percent();
   }
 
+  void execute() override
+  {
+    fire_mage_spell_t::execute();
+    p()->trigger_sinful_delight( MAGE_FIRE );
+  }
+
   void impact( action_state_t* s ) override
   {
     fire_mage_spell_t::impact( s );
@@ -5025,6 +5064,37 @@ struct mirrors_of_torment_t final : public mage_spell_t
 
 // Radiant Spark Spell ======================================================
 
+struct harmonic_echo_t final : public mage_spell_t
+{
+  harmonic_echo_t( util::string_view n, mage_t* p ) :
+    mage_spell_t( n, p, p->find_spell( 354189 ) )
+  {
+    background = true;
+    may_miss = may_crit = callbacks = false;
+    affected_by.radiant_spark = false;
+    base_dd_min = base_dd_max = 1.0;
+  }
+
+  void init() override
+  {
+    mage_spell_t::init();
+
+    // TODO: Harmonic Echo currently ignores all damage taken multipliers, which
+    // is almost certainly wrong. Once that's fixed, it should only ignore positive
+    // damage taken multipliers.
+    snapshot_flags &= STATE_NO_MULTIPLIER;
+  }
+
+  size_t available_targets( std::vector<player_t*>& tl ) const override
+  {
+    mage_spell_t::available_targets( tl );
+
+    tl.erase( std::remove( tl.begin(), tl.end(), target ), tl.end() );
+
+    return tl.size();
+  }
+};
+
 struct radiant_spark_t final : public mage_spell_t
 {
   radiant_spark_t( util::string_view n, mage_t* p, util::string_view options_str ) :
@@ -5039,13 +5109,14 @@ struct radiant_spark_t final : public mage_spell_t
   {
     mage_spell_t::impact( s );
 
-    if ( auto td = find_td( s->target ) )
-    {
-      // If Radiant Spark is refreshed, the vulnerability debuff can be
-      // triggered once again. Any previous stacks of the debuff are removed.
-      td->debuffs.radiant_spark_vulnerability->cooldown->reset( false );
-      td->debuffs.radiant_spark_vulnerability->expire();
-    }
+    // Create the vulnerability debuff for this target if it doesn't exist yet.
+    // This is necessary because mage_spell_t::assess_damage does not create the
+    // target data by itself.
+    auto td = get_td( s->target );
+    // If Radiant Spark is refreshed, the vulnerability debuff can be
+    // triggered once again. Any previous stacks of the debuff are removed.
+    td->debuffs.radiant_spark_vulnerability->cooldown->reset( false );
+    td->debuffs.radiant_spark_vulnerability->expire();
   }
 
   void last_tick( dot_t* d ) override
@@ -5071,6 +5142,12 @@ struct shifting_power_pulse_t final : public mage_spell_t
   {
     background = true;
     aoe = -1;
+  }
+
+  void impact( action_state_t* s ) override
+  {
+    mage_spell_t::impact( s );
+    p()->buffs.heart_of_the_fae->trigger();
   }
 };
 
@@ -5109,6 +5186,14 @@ struct shifting_power_t final : public mage_spell_t
         shifting_power_cooldowns.push_back( m->cooldown );
       }
     }
+  }
+
+  bool usable_moving() const override
+  {
+    if ( p()->runeforge.heart_of_the_fae.ok() )
+      return true;
+
+    return mage_spell_t::usable_moving();
   }
 
   void tick( dot_t* d ) override
@@ -5487,16 +5572,17 @@ mage_t::mage_t( sim_t* sim, util::string_view name, race_e r ) :
   uptime()
 {
   // Cooldowns
-  cooldowns.arcane_power     = get_cooldown( "arcane_power"     );
-  cooldowns.combustion       = get_cooldown( "combustion"       );
-  cooldowns.cone_of_cold     = get_cooldown( "cone_of_cold"     );
-  cooldowns.fire_blast       = get_cooldown( "fire_blast"       );
-  cooldowns.from_the_ashes   = get_cooldown( "from_the_ashes"   );
-  cooldowns.frost_nova       = get_cooldown( "frost_nova"       );
-  cooldowns.frozen_orb       = get_cooldown( "frozen_orb"       );
-  cooldowns.icy_veins        = get_cooldown( "icy_veins"        );
-  cooldowns.phoenix_flames   = get_cooldown( "phoenix_flames"   );
-  cooldowns.presence_of_mind = get_cooldown( "presence_of_mind" );
+  cooldowns.arcane_power       = get_cooldown( "arcane_power"       );
+  cooldowns.combustion         = get_cooldown( "combustion"         );
+  cooldowns.cone_of_cold       = get_cooldown( "cone_of_cold"       );
+  cooldowns.fire_blast         = get_cooldown( "fire_blast"         );
+  cooldowns.from_the_ashes     = get_cooldown( "from_the_ashes"     );
+  cooldowns.frost_nova         = get_cooldown( "frost_nova"         );
+  cooldowns.frozen_orb         = get_cooldown( "frozen_orb"         );
+  cooldowns.icy_veins          = get_cooldown( "icy_veins"          );
+  cooldowns.mirrors_of_torment = get_cooldown( "mirrors_of_torment" );
+  cooldowns.phoenix_flames     = get_cooldown( "phoenix_flames"     );
+  cooldowns.presence_of_mind   = get_cooldown( "presence_of_mind"   );
 
   // Options
   resource_regeneration = regen_type::DYNAMIC;
@@ -5539,6 +5625,12 @@ void mage_t::trigger_disciplinary_command( school_e school )
       buffs.disciplinary_command_fire->expire();
     }
   }
+}
+
+void mage_t::trigger_sinful_delight( specialization_e spec )
+{
+  if ( runeforge.sinful_delight.ok() && specialization() == spec )
+    cooldowns.mirrors_of_torment->adjust( -runeforge.sinful_delight->effectN( 1 ).time_value() );
 }
 
 action_t* mage_t::create_action( util::string_view name, const std::string& options_str )
@@ -5659,6 +5751,9 @@ void mage_t::create_actions()
 
   if ( runeforge.cold_front.ok() )
     action.legendary_frozen_orb = get_action<frozen_orb_t>( "legendary_frozen_orb", this, "", true );
+
+  if ( runeforge.harmonic_echo.ok() )
+    action.harmonic_echo = get_action<harmonic_echo_t>( "harmonic_echo", this );
 
   if ( find_covenant_spell( "Mirrors of Torment" )->ok() )
   {
@@ -5958,6 +6053,9 @@ void mage_t::init_spells()
   runeforge.disciplinary_command = find_runeforge_legendary( "Disciplinary Command" );
   runeforge.expanded_potential   = find_runeforge_legendary( "Expanded Potential"   );
   runeforge.grisly_icicle        = find_runeforge_legendary( "Grisly Icicle"        );
+  runeforge.harmonic_echo        = find_runeforge_legendary( "Harmonic Echo"        );
+  runeforge.heart_of_the_fae     = find_runeforge_legendary( "Heart of the Fae"     );
+  runeforge.sinful_delight       = find_runeforge_legendary( "Sinful Delight"       );
 
   // Soulbind Conduits
   conduits.arcane_prodigy           = find_conduit_spell( "Arcane Prodigy"           );
@@ -6090,7 +6188,9 @@ void mage_t::create_buffs()
 
 
   // Frost
-  buffs.brain_freeze     = make_buff<buffs::expanded_potential_buff_t>( this, "brain_freeze", find_spell( 190446 ) );
+  buffs.brain_freeze     = make_buff<buffs::expanded_potential_buff_t>( this, "brain_freeze", find_spell( 190446 ) )
+                             ->set_stack_change_callback( [ this ] ( buff_t*, int old, int new_ )
+                               { if ( old > new_ ) trigger_sinful_delight( MAGE_FROST ); } );
   buffs.fingers_of_frost = make_buff( this, "fingers_of_frost", find_spell( 44544 ) );
   buffs.icicles          = make_buff( this, "icicles", find_spell( 205473 ) );
   buffs.icy_veins        = make_buff<buffs::icy_veins_t>( this );
@@ -6170,6 +6270,11 @@ void mage_t::create_buffs()
                                         ->set_chance( runeforge.disciplinary_command.ok() );
   buffs.expanded_potential          = make_buff( this, "expanded_potential", find_spell( 327495 ) )
                                         ->set_trigger_spell( runeforge.expanded_potential );
+  buffs.heart_of_the_fae            = make_buff( this, "heart_of_the_fae", find_spell( 356881 ) )
+                                        ->set_default_value_from_effect( 1 )
+                                        ->set_pct_buff_type( STAT_PCT_BUFF_CRIT )
+                                        ->set_pct_buff_type( STAT_PCT_BUFF_HASTE )
+                                        ->set_chance( runeforge.heart_of_the_fae.ok() );
 
   // Covenant Abilities
   buffs.deathborne = make_buff( this, "deathborne", find_spell( 324220 ) )
@@ -6426,9 +6531,9 @@ double mage_t::composite_player_multiplier( school_e school ) const
   return m;
 }
 
-double mage_t::composite_player_pet_damage_multiplier( const action_state_t* s ) const
+double mage_t::composite_player_pet_damage_multiplier( const action_state_t* s, bool guardian ) const
 {
-  double m = player_t::composite_player_pet_damage_multiplier( s );
+  double m = player_t::composite_player_pet_damage_multiplier( s, guardian );
 
   m *= 1.0 + spec.arcane_mage->effectN( 3 ).percent();
   m *= 1.0 + spec.fire_mage->effectN( 3 ).percent();
@@ -6727,7 +6832,7 @@ std::unique_ptr<expr_t> mage_t::create_expression( util::string_view name )
     std::vector<action_t*> in_flight_list;
     for ( auto a : action_list )
     {
-      if ( is_hss( a ) || range::find_if( a->child_action, is_hss ) != a->child_action.end() )
+      if ( is_hss( a ) || range::any_of( a->child_action, is_hss ) )
         in_flight_list.push_back( a );
     }
 

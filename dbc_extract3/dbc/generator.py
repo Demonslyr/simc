@@ -1284,6 +1284,12 @@ class SpellDataGenerator(DataGenerator):
          329548,
          # 9.1 Soulbinds
          352881, # Bonded Hearts (night fae/niya)
+         # Miniscule Mailemental in an Envelope
+         352542,
+         # Tome of Monstrous Constructions
+         357163,
+         357168,
+         357169
         ),
 
         # Warrior:
@@ -1461,6 +1467,7 @@ class SpellDataGenerator(DataGenerator):
             ( 356390, 0 ),          # Pallid Command Necrolord Legendary Power (UNCONFIRMED)
             ( 356395, 0 ),          # Spheres' Harmony Kyrian Legendary Power (UNCONFIRMED)
             ( 356515, 0 ),          # Bwonsamdi's Pact buff from the Legendary Power
+            ( 357028, 0 ),          # Shadow Word: Manipulation Critical Strike Buff
             # Holy Priest
             ( 196809, 5 ),          # Healing Light (Divine Image legendary pet spell)
             ( 196810, 5 ),          # Dazzling Light (Divine Image legendary pet spell)
@@ -1820,6 +1827,8 @@ class SpellDataGenerator(DataGenerator):
           ( 339229, 0 ), # Serrated Glaive conduit debuff
           ( 337849, 0 ), ( 345604, 0 ), ( 346664, 0 ), # Fel Bombardment legendary spells
           ( 347765, 0 ), # Fodder to the Flame Empowered Demon Soul buff
+          ( 355894, 0 ), ( 356070, 0 ), # Blind Faith legendary spells
+          ( 355892, 0 ), # Blazing Slaughter legendary buff
 
           # Havoc
           ( 236167, 1 ), # Felblade proc rate
@@ -2671,6 +2680,9 @@ class SpellDataGenerator(DataGenerator):
             # and produces a list of effect ids
             if len(effect_ids):
                 spelleffect_index[ id ] = [ effect_ids.get(i, 0) for i in range(max(effect_ids.keys()) + 1) ]
+
+        for label in constants.SPELL_LABEL_WHITELIST:
+            included_labels.add(label)
 
         labels = []
         for label in self.db('SpellLabel').values():

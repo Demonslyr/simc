@@ -527,6 +527,9 @@ struct player_t : public actor_t
     buff_t* norgannons_sagacity_stacks;  // stacks on every cast
     buff_t* norgannons_sagacity;         // consume stacks to allow casting while moving
     buff_t* echo_of_eonar;               // passive self buff
+
+    // 9.1 Legendary Party Buffs
+    buff_t* pact_of_the_soulstalkers; // Kyrian Hunter Legendary
   } buffs;
 
   struct debuffs_t
@@ -558,7 +561,9 @@ struct player_t : public actor_t
     std::vector<timespan_t> blessing_of_spring;
     std::vector<timespan_t> conquerors_banner;
     std::vector<timespan_t> rallying_cry;
+    std::vector<timespan_t> pact_of_the_soulstalkers;
   } external_buffs;
+
 
   struct gains_t
   {
@@ -944,7 +949,8 @@ public:
   virtual double composite_player_dh_multiplier( school_e ) const { return 1; }
   virtual double composite_player_th_multiplier( school_e ) const;
   virtual double composite_player_absorb_multiplier( const action_state_t* s ) const;
-  virtual double composite_player_pet_damage_multiplier( const action_state_t* ) const;
+  virtual double composite_player_pet_damage_multiplier( const action_state_t*, bool guardian ) const;
+  virtual double composite_player_target_pet_damage_multiplier( player_t* target, bool guardian ) const;
   virtual double composite_player_target_crit_chance( player_t* target ) const;
   virtual double composite_player_critical_damage_multiplier( const action_state_t* s ) const;
   virtual double composite_player_critical_healing_multiplier() const;

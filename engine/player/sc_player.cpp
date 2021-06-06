@@ -422,7 +422,7 @@ struct execute_pet_action_t : public action_t
     if ( !pet_action )
     {
 
-      throw std::invalid_argument(fmt::format("Player {} refers to unknown action {} for pet {}.", player->name(), action_str.c_str(),
+      throw std::invalid_argument(fmt::format("Player {} refers to unknown action {} for pet {}.", player->name(), action_str,
           pet->name()));
     }
 
@@ -3955,7 +3955,7 @@ double player_t::composite_total_corruption() const
   return cache.corruption() - cache.corruption_resistance();
 }
 
-double player_t::composite_player_pet_damage_multiplier( const action_state_t* ) const
+double player_t::composite_player_pet_damage_multiplier( const action_state_t*, bool ) const
 {
   double m = 1.0;
 
@@ -3967,6 +3967,11 @@ double player_t::composite_player_pet_damage_multiplier( const action_state_t* )
         1.0 + ( buffs.battlefield_presence->data().effectN( 2 ).percent() * buffs.battlefield_presence->current_stack );
 
   return m;
+}
+
+double player_t::composite_player_target_pet_damage_multiplier( player_t*, bool ) const
+{
+  return 1.0;
 }
 
 double player_t::composite_player_multiplier( school_e school ) const
@@ -4654,6 +4659,7 @@ void player_t::combat_begin()
   add_timed_buff_triggers( external_buffs.blessing_of_spring, buffs.blessing_of_spring );
   add_timed_buff_triggers( external_buffs.conquerors_banner, buffs.conquerors_banner );
   add_timed_buff_triggers( external_buffs.rallying_cry, buffs.rallying_cry );
+  add_timed_buff_triggers( external_buffs.pact_of_the_soulstalkers, buffs.pact_of_the_soulstalkers );
 
   if ( buffs.windfury_totem )
   {
@@ -8264,8 +8270,8 @@ struct use_item_t : public action_t
       cooldown_group->start( cooldown_group_duration );
       if ( sim->debug )
       {
-        sim->out_debug.printf( "%s starts shared cooldown for %s (%s). Will be ready at %.4f", player->name(), name(),
-                               cooldown_group->name(), cooldown_group->ready.total_seconds() );
+        sim->out_debug.print( "{} starts shared cooldown for {} ({}). Will be ready at {}", *player, name(),
+                               cooldown_group->name(), cooldown_group->ready );
       }
     }
   }
@@ -8560,13 +8566,13 @@ struct use_items_t : public action_t
     // Note that this only looks at item-sourced on-use actions (e.g., no engineering addons).
     range::for_each( slot_order, [this]( slot_e slot ) {
       const auto& item     = player->items[ slot ];
-      const auto effect_it = range::find_if( item.parsed.special_effects, []( const special_effect_t* e ) {
+      const auto has_effect = range::any_of( item.parsed.special_effects, []( const special_effect_t* e ) {
         return (e->source == SPECIAL_EFFECT_SOURCE_ITEM || e->source == SPECIAL_EFFECT_SOURCE_GEM ||
                 e->source == SPECIAL_EFFECT_SOURCE_ENCHANT) && e->type == SPECIAL_EFFECT_USE;
       } );
 
       // No item-based on-use effect in the slot, skip
-      if ( effect_it == item.parsed.special_effects.end() )
+      if ( !has_effect )
       {
         return;
       }
@@ -10511,7 +10517,7 @@ std::unique_ptr<expr_t> player_t::create_expression( util::string_view expressio
     return covenant->create_expression( splits );
   }
 
-  if ( auto expr = runeforge::create_expression( this, splits ) )
+  if ( auto expr = runeforge::create_expression( this, splits, expression_str ) )
   {
     return expr;
   }
@@ -11342,6 +11348,7 @@ void player_t::create_options()
   add_option( opt_external_buff_times( "external_buffs.blessing_of_spring", external_buffs.blessing_of_spring ) );
   add_option( opt_external_buff_times( "external_buffs.conquerors_banner", external_buffs.conquerors_banner ) );
   add_option( opt_external_buff_times( "external_buffs.rallying_cry", external_buffs.rallying_cry ) );
+  add_option( opt_external_buff_times( "external_buffs.pact_of_the_soulstalkers", external_buffs.pact_of_the_soulstalkers ) ); // 9.1 Kyrian Hunter Legendary
 
   // Azerite options
   if ( ! is_enemy() && ! is_pet() )
