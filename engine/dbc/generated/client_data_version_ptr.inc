@@ -1,9 +1,15 @@
 #ifndef PTR_CLIENT_DATA_VERSION_INC
 #define PTR_CLIENT_DATA_VERSION_INC
 
-// Client data versioning information for 9.1.0.38950
+// Client data versioning information for 9.1.0.39015
 
-#define PTR_CLIENT_DATA_WOW_VERSION "9.1.0.38950"
+#define PTR_CLIENT_DATA_WOW_VERSION "9.1.0.39015"
 #define PTR_SIMC_WOW_VERSION "910"
+
+// Hotfix data versioning information
+
+#define PTR_CLIENT_DATA_HOTFIX_DATE "2021-06-18"
+#define PTR_CLIENT_DATA_HOTFIX_BUILD (39015)
+#define PTR_CLIENT_DATA_HOTFIX_HASH "97a22dfe652d183cf3128a0692f08daefd315b9ec7e4e45e1e729a2571818ce3"
 
 #endif /* PTR_CLIENT_DATA_VERSION_INC*/

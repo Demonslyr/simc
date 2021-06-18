@@ -972,9 +972,6 @@ struct touch_of_the_magi_t final : public buff_t
 
     explosion->set_target( player );
     double damage_fraction = p->spec.touch_of_the_magi->effectN( 1 ).percent();
-    // TODO: Higher ranks of this spell use floating point values in the spell data.
-    // Verify whether we need a floor operation here to trim those values down to integers,
-    // which sometimes happens when Blizzard uses floating point numbers like this.
     damage_fraction += p->conduits.magis_brand.percent();
     explosion->base_dd_min = explosion->base_dd_max = damage_fraction * current_value;
     explosion->execute();
@@ -1024,10 +1021,6 @@ struct combustion_t final : public buff_t
   }
 };
 
-// TODO: Verify what happens when Expanded Potential is triggered and
-// consumed at the same time, e.g., what happens when casting Fireball
-// into Pyroblast with Hot Streak when Expanded Potential is up, but
-// the Fireball also triggers a new instance of Expanded Potential?
 struct expanded_potential_buff_t : public buff_t
 {
   mage_t* mage;
@@ -1038,22 +1031,16 @@ struct expanded_potential_buff_t : public buff_t
 
   void decrement( int stacks, double value ) override
   {
-    // Sinful Delight only triggers when Clearcasting is consumed.
     if ( check() )
+    {
       mage->trigger_sinful_delight( MAGE_ARCANE );
+      mage->trigger_sinful_delight( MAGE_FROST );
+    }
 
     if ( check() && mage->buffs.expanded_potential->check() )
       mage->buffs.expanded_potential->expire();
     else
       buff_t::decrement( stacks, value );
-  }
-
-  void refresh( int stacks, double value, timespan_t duration ) override
-  {
-    buff_t::refresh( stacks, value, duration );
-
-    // Sinful Delight triggers when Brain Freeze refreshes.
-    mage->trigger_sinful_delight( MAGE_FROST );
   }
 };
 
@@ -1534,8 +1521,6 @@ public:
 
     if ( auto td = find_td( target ) )
     {
-      // TODO: Confirm how Radiant Spark is supposed to interact with Ignite.
-      // Right now in beta, the damage multiplier gets factored out when triggering Ignite.
       if ( affected_by.radiant_spark )
         m *= 1.0 + td->debuffs.radiant_spark_vulnerability->check_stack_value();
     }
@@ -2098,9 +2083,14 @@ struct hot_streak_spell_t : public fire_mage_spell_t
     return debug_cast<const hot_streak_state_t*>( s )->hot_streak ? 2.0 : 1.0;
   }
 
+  void schedule_execute( action_state_t* s ) override
+  {
+    fire_mage_spell_t::schedule_execute( s );
+    last_hot_streak = p()->buffs.hot_streak->up();
+  }
+
   void execute() override
   {
-    last_hot_streak = p()->buffs.hot_streak->up() && time_to_execute == 0_ms;
     fire_mage_spell_t::execute();
 
     if ( last_hot_streak )
@@ -2514,10 +2504,7 @@ struct arcane_blast_t final : public arcane_mage_spell_t
     if ( p()->buffs.presence_of_mind->up() )
       p()->buffs.presence_of_mind->decrement();
 
-    // There is a delay where it is possible to cast a spell that would
-    // consume Expanded Potential immediately after Expanded Potential
-    // is triggered, which will prevent it from being consumed.
-    p()->trigger_delayed_buff( p()->buffs.expanded_potential );
+    p()->buffs.expanded_potential->trigger();
   }
 
   void impact( action_state_t* s ) override
@@ -3379,11 +3366,7 @@ struct fireball_t final : public fire_mage_spell_t
   void execute() override
   {
     fire_mage_spell_t::execute();
-
-    // There is a delay where it is possible to cast a spell that would
-    // consume Expanded Potential immediately after Expanded Potential
-    // is triggered, which will prevent it from being consumed.
-    p()->trigger_delayed_buff( p()->buffs.expanded_potential );
+    p()->buffs.expanded_potential->trigger();
   }
 
   void impact( action_state_t* s ) override
@@ -3637,8 +3620,6 @@ struct frostbolt_t final : public frost_mage_spell_t
 
     t *= 1.0 + p()->buffs.slick_ice->check_stack_value();
 
-    // TODO: This probably isn't intended since it breaks the spec even
-    // at fairly mild haste levels.
     t = std::max( t, min_gcd );
 
     return t;
@@ -3672,7 +3653,7 @@ struct frostbolt_t final : public frost_mage_spell_t
     p()->trigger_fof( ft_multiplier * p()->spec.fingers_of_frost->effectN( 1 ).percent(), proc_fof );
     p()->trigger_brain_freeze( ft_multiplier * p()->spec.brain_freeze->effectN( 1 ).percent(), proc_brain_freeze );
 
-    p()->trigger_delayed_buff( p()->buffs.expanded_potential );
+    p()->buffs.expanded_potential->trigger();
 
     if ( p()->buffs.icy_veins->check() )
       p()->buffs.slick_ice->trigger();
@@ -4091,7 +4072,6 @@ struct ice_lance_t final : public frost_mage_spell_t
     if ( !primary )
       record_shatter_source( s, cleave_source );
 
-    // TODO: Determine how it is verified that Blizzard is actively "hitting" the target to increase this chance.
     if ( glacial_fragments )
     {
       double chance = p()->ground_aoe_expiration[ AOE_BLIZZARD ] > sim->current_time()
@@ -4537,7 +4517,6 @@ struct phoenix_flames_splash_t final : public fire_mage_spell_t
         ignites.push_back( t->get_dot( "ignite", player ) );
 
       // Sort candidate Ignites by descending bank size.
-      // TODO: Double check what targets the Ignite spread prioritizes.
       std::stable_sort( ignites.begin(), ignites.end(), [] ( dot_t* a, dot_t* b )
       { return ignite_bank( a ) > ignite_bank( b ); } );
 
@@ -4575,7 +4554,6 @@ struct phoenix_flames_splash_t final : public fire_mage_spell_t
   {
     fire_mage_spell_t::impact( s );
 
-    // TODO: Verify what happens when Phoenix Flames hits an immune target.
     if ( result_is_hit( s->result ) && s->chain_target == 0 )
     {
       // Delay sperading Ignite by double the delay of Ignite's residual action
@@ -4652,9 +4630,7 @@ struct pyroblast_t final : public hot_streak_spell_t
 
   void execute() override
   {
-    // TODO: Check whether Sun King's Blessing activates when
-    // an instant cast Pyroblast without Hot Streak is used
-    if ( time_to_execute > 0_ms && p()->buffs.sun_kings_blessing_ready->check() )
+    if ( !last_hot_streak && p()->buffs.sun_kings_blessing_ready->check() )
     {
       p()->buffs.sun_kings_blessing_ready->expire();
       p()->buffs.combustion->extend_duration_or_trigger( 1000 * p()->runeforge.sun_kings_blessing->effectN( 2 ).time_value() );
@@ -5079,10 +5055,14 @@ struct harmonic_echo_t final : public mage_spell_t
   {
     mage_spell_t::init();
 
-    // TODO: Harmonic Echo currently ignores all damage taken multipliers, which
-    // is almost certainly wrong. Once that's fixed, it should only ignore positive
-    // damage taken multipliers.
     snapshot_flags &= STATE_NO_MULTIPLIER;
+    snapshot_flags |= STATE_TGT_MUL_DA;
+  }
+
+  double composite_target_multiplier( player_t* target ) const override
+  {
+    // Ignore Positive Damage Taken Modifiers (321)
+    return std::min( mage_spell_t::composite_target_multiplier( target ), 1.0 );
   }
 
   size_t available_targets( std::vector<player_t*>& tl ) const override
@@ -6188,9 +6168,7 @@ void mage_t::create_buffs()
 
 
   // Frost
-  buffs.brain_freeze     = make_buff<buffs::expanded_potential_buff_t>( this, "brain_freeze", find_spell( 190446 ) )
-                             ->set_stack_change_callback( [ this ] ( buff_t*, int old, int new_ )
-                               { if ( old > new_ ) trigger_sinful_delight( MAGE_FROST ); } );
+  buffs.brain_freeze     = make_buff<buffs::expanded_potential_buff_t>( this, "brain_freeze", find_spell( 190446 ) );
   buffs.fingers_of_frost = make_buff( this, "fingers_of_frost", find_spell( 44544 ) );
   buffs.icicles          = make_buff( this, "icicles", find_spell( 205473 ) );
   buffs.icy_veins        = make_buff<buffs::icy_veins_t>( this );
@@ -6269,6 +6247,7 @@ void mage_t::create_buffs()
                                         ->set_quiet( true )
                                         ->set_chance( runeforge.disciplinary_command.ok() );
   buffs.expanded_potential          = make_buff( this, "expanded_potential", find_spell( 327495 ) )
+                                        ->set_activated( false )
                                         ->set_trigger_spell( runeforge.expanded_potential );
   buffs.heart_of_the_fae            = make_buff( this, "heart_of_the_fae", find_spell( 356881 ) )
                                         ->set_default_value_from_effect( 1 )

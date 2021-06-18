@@ -25,14 +25,14 @@ struct storm_earth_and_fire_pet_t;
 
 struct monk_t;
 
-enum sef_pet_e
+enum class sef_pet_e
 {
   SEF_FIRE = 0,
   SEF_EARTH,
   SEF_PET_MAX
 };  // Player becomes storm spirit.
 
-enum sef_ability_e
+enum class sef_ability_e
 {
   SEF_NONE = -1,
   // Attacks begin here
@@ -60,9 +60,9 @@ enum sef_ability_e
   SEF_MAX
 };
 
-inline unsigned sef_spell_index( sef_ability_e x )
+inline int sef_spell_index( int x )
 {
-  return x - as<unsigned>( static_cast<int>( SEF_SPELL_MIN ) );
+  return x - static_cast<int>( sef_ability_e::SEF_SPELL_MIN );
 }
 
 struct monk_td_t : public actor_target_data_t
@@ -118,7 +118,7 @@ public:
   // Active
   action_t* windwalking_aura;
 
-  struct
+  struct sample_data_t
   {
     sc_timeline_t stagger_effective_damage_timeline;
     sc_timeline_t stagger_damage_pct_timeline;
@@ -236,6 +236,7 @@ public:
     buff_t* whirling_dragon_punch;
 
     // Covenant Abilities
+    buff_t* bonedust_brew;
     buff_t* bonedust_brew_hidden;
     buff_t* weapons_of_order;
     buff_t* weapons_of_order_ww;
@@ -255,6 +256,7 @@ public:
     buff_t* mighty_pour;
     buff_t* pressure_point;
     buff_t* the_emperors_capacitor;
+    buff_t* invoke_xuen_call_to_arms;
   } buff;
 
 public:
@@ -609,6 +611,10 @@ public:
     const spell_data_t* fae_exposure_heal;
     const spell_data_t* shaohaos_might;
     const spell_data_t* charred_passions_dmg;
+    const spell_data_t* call_to_arms_invoke_xuen;
+    const spell_data_t* call_to_arms_invoke_niuzao;
+    const spell_data_t* call_to_arms_invoke_yulon;
+    const spell_data_t* call_to_arms_invoke_chiji;
   } passives;
 
   // RPPM objects
@@ -725,7 +731,7 @@ public:
 
   struct pets_t
   {
-    std::array<pets::storm_earth_and_fire_pet_t*, SEF_PET_MAX> sef;
+    std::array<pets::storm_earth_and_fire_pet_t*, (int)sef_pet_e::SEF_PET_MAX> sef;
     spawner::pet_spawner_t<pet_t, monk_t> xuen;
     spawner::pet_spawner_t<pet_t, monk_t> niuzao;
     spawner::pet_spawner_t<pet_t, monk_t> yulon;

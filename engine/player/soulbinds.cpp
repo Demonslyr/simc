@@ -19,6 +19,18 @@
 
 #include "simulationcraft.hpp"
 
+/*
+* Currently Missing Soulbinds:
+* Kyrian:
+* - Kleia's Valiant Strikes
+* - Kleia's Light the Path
+* Necrolord:
+* - Maerileth's Kevin's Oozeling
+* - Emeni's Pustule Eruption
+* Night Fae:
+* - Korayn's Wild Hunt Strategem
+*/
+
 namespace covenant
 {
 namespace soulbinds
@@ -572,25 +584,14 @@ void thrill_seeker( special_effect_t& effect )
     void expire_override( int s, timespan_t d ) override
     {
       buff_t::expire_override( s, d );
+      if ( !player->buffs.fatal_flaw_crit || !player->buffs.fatal_flaw_vers )
+        return;
 
-      auto crit = player->cache.spell_crit_chance();
-      auto vers = player->cache.damage_versatility();
-
-      // TODO: implement what happens if vers = crit
-      if ( crit > vers )
-      {
-        if ( player->buffs.fatal_flaw_crit )
-        {
-          player->buffs.fatal_flaw_crit->trigger();
-        }
-      }
-      else if ( vers > crit )
-      {
-        if ( player->buffs.fatal_flaw_vers )
-        {
-          player->buffs.fatal_flaw_vers->trigger();
-        }
-      }
+      // Prefers crit at equal stats
+      if ( player->cache.spell_crit_chance() >= player->cache.damage_versatility() )
+        player->buffs.fatal_flaw_crit->trigger();
+      else
+        player->buffs.fatal_flaw_vers->trigger();
     }
   };
 
@@ -1313,7 +1314,7 @@ void effusive_anima_accelerator( special_effect_t& effect )
       for ( auto a : player->action_list )
       {
         auto rank_str = player->dbc->spell_text( a->data().id() ).rank();
-        if ( rank_str && a->data().affected_by_label( 976 ) && util::str_compare_ci( rank_str, "Kyrian" ) )
+        if ( rank_str && a->data().affected_by_label( LABEL_COVENANT ) && util::str_compare_ci( rank_str, "Kyrian" ) )
         {
           if ( !range::contains( affected_cooldowns, a->cooldown ) )
           {
@@ -1768,6 +1769,146 @@ void mnemonic_equipment( special_effect_t& effect )
   new mnemonic_equipment_cb_t( effect );
 }
 
+/**Newfound Resolve
+ * id=351149 special effect with the Shuffled RNG period
+ * id=352916 Area Trigger that the player needs to face
+ * id=352917 The buff to primary stat and stamina. This also has the travel time from
+ *           the Area Trigger, which is NYI because it is insignificant in most cases.
+ * id=352918 travel delay before spawning the Area Trigger
+ * id=358404 "Trial of Doubt" debuff that indicates an Area Trigger is active.
+ */
+struct trial_of_doubt_t : public buff_t
+{
+  bool automatic_delay;
+  timespan_t min_delay;
+  shuffled_rng_t* shuffled_rng;
+
+  trial_of_doubt_t( player_t* p )
+    : buff_t( p, "trial_of_doubt", p->find_spell( 358404 ) ),
+      automatic_delay( true ),
+      // Newfound Resolve cannot be gained for 2 seconds after the Area Trigger spawns.
+      min_delay( timespan_t::from_seconds( p->find_spell( 352918 )->missile_speed() ) + 2_s )
+    {
+      // The values of 1 and 30 below are not present in the game data.
+      int success_entries = 1;
+      shuffled_rng = p->get_shuffled_rng( "newfound_resolve", success_entries, 30 );
+      // In simc, we model failing to face the Area Trigger by not triggering the debuff at all.
+      set_chance( sim->shadowlands_opts.newfound_resolve_success_chance );
+      // This only needs enough stacks to cover any possible overlap based on the
+      // shuffled rng parameters. Using double the number of success entries here
+      // requires that the total number of entries is sufficiently large.
+      set_max_stack( 2 * success_entries );
+      set_stack_behavior( buff_stack_behavior::ASYNCHRONOUS );
+      set_can_cancel( false );
+    }
+
+    bool trigger( int stacks, double value, double chance, timespan_t duration ) override
+    {
+      if ( !shuffled_rng->trigger() )
+        return false;
+
+      if ( duration < 0_ms && automatic_delay )
+      {
+        duration = sim->shadowlands_opts.newfound_resolve_default_delay;
+        duration = rng().gauss( duration, duration * sim->shadowlands_opts.newfound_resolve_delay_relstddev );
+        // You cannot face your Doubt until min_delay has passed.
+        // With automatic_delay, ensure the duration is long enough.
+        duration = std::max( min_delay, std::min( duration, buff_duration() ) );
+      }
+
+      return buff_t::trigger( stacks, value, chance, duration );
+    }
+
+    bool ready() const
+    {
+      if ( current_stack <= 0 || expiration.empty() )
+        return false;
+
+      // You cannot face your Doubt until min_delay has passed.
+      // Check that the buff has been active for long enough.
+      return buff_duration() + sim->current_time() - expiration.front()->occurs() >= min_delay;
+    }
+};
+
+struct newfound_resolve_t : public action_t
+{
+  trial_of_doubt_t* trial_of_doubt;
+
+  newfound_resolve_t( player_t* p, util::string_view opt )
+    : action_t( ACTION_OTHER, "newfound_resolve", p )
+  {
+    parse_options( opt );
+    trigger_gcd = 0_ms;
+    harmful = false;
+    ignore_false_positive = usable_while_casting = true;
+  }
+
+  void init_finished() override
+  {
+    trial_of_doubt = dynamic_cast<trial_of_doubt_t*>( buff_t::find( player, "trial_of_doubt" ) );
+    // If this action is present in the APL, automatic delay for this Soulbind is disabled.
+    if ( trial_of_doubt )
+      trial_of_doubt->automatic_delay = false;
+
+    action_t::init_finished();
+  }
+
+  void execute() override
+  {
+    if ( !trial_of_doubt )
+      return;
+
+    trial_of_doubt->decrement();
+  }
+
+  bool ready() override
+  {
+    if ( !trial_of_doubt || !trial_of_doubt->ready() )
+      return false;
+
+    return action_t::ready();
+  }
+};
+
+void newfound_resolve( special_effect_t& effect )
+{
+  if ( unique_gear::create_fallback_buffs( effect, { "newfound_resolve", "trial_of_doubt" } ) )
+    return;
+
+  buff_t* newfound_resolve_buff = buff_t::find( effect.player, "newfound_resolve" );
+  if ( !newfound_resolve_buff )
+  {
+    newfound_resolve_buff = make_buff( effect.player, "newfound_resolve", effect.player->find_spell( 352917 ) )
+                              ->set_default_value_from_effect_type( A_MOD_TOTAL_STAT_PERCENTAGE )
+                              ->set_pct_buff_type( STAT_PCT_BUFF_STRENGTH )
+                              ->set_pct_buff_type( STAT_PCT_BUFF_AGILITY )
+                              ->set_pct_buff_type( STAT_PCT_BUFF_STAMINA )
+                              ->set_pct_buff_type( STAT_PCT_BUFF_INTELLECT );
+  }
+
+  buff_t* trial_of_doubt = buff_t::find( effect.player, "trial_of_doubt" );
+  if ( !trial_of_doubt )
+  {
+    trial_of_doubt = make_buff<trial_of_doubt_t>( effect.player )
+                       ->set_stack_change_callback( [ newfound_resolve_buff ]( buff_t*, int old, int cur )
+                       {
+                         if ( old > cur )
+                           newfound_resolve_buff->trigger();
+                       } );
+  }
+
+  timespan_t period = effect.driver()->effectN( 1 ).period();
+  effect.player->register_combat_begin( [ period, trial_of_doubt ]( player_t* p )
+  {
+    timespan_t first_update = p->rng().real() * period;
+    make_event( p->sim, first_update, [ p, period, trial_of_doubt ]
+    {
+      trial_of_doubt->trigger();
+      make_repeating_event( p->sim, period, [ trial_of_doubt ] { trial_of_doubt->trigger(); } );
+    } );
+  } );
+}
+
 // Passive which increases Stamina based on Renown level
 void deepening_bond( special_effect_t& effect )
 {
@@ -1831,6 +1972,7 @@ void register_special_effects()
   register_soulbind_special_effect( 333935, soulbinds::hammer_of_genesis );  // Mikanikos
   register_soulbind_special_effect( 333950, soulbinds::brons_call_to_action, true );
   register_soulbind_special_effect( 352188, soulbinds::effusive_anima_accelerator );
+  register_soulbind_special_effect( 351149, soulbinds::newfound_resolve, true );
   // Necrolord
   register_soulbind_special_effect( 323074, soulbinds::volatile_solvent );  // Marileth
   register_soulbind_special_effect( 323090, soulbinds::plagueys_preemptive_strike );
@@ -1854,6 +1996,13 @@ void register_special_effects()
   unique_gear::register_special_effect( 344087, soulbinds::deepening_bond );  // Kyrian Rank 1
   unique_gear::register_special_effect( 344089, soulbinds::deepening_bond );  // Kyrian Rank 2
   unique_gear::register_special_effect( 344091, soulbinds::deepening_bond );  // Kyrian Rank 3
+}
+
+action_t* create_action( player_t* player, util::string_view name, const std::string& options )
+{
+  if ( util::str_compare_ci( name, "newfound_resolve" ) ) return new soulbinds::newfound_resolve_t( player, options );
+
+  return nullptr;
 }
 
 void initialize_soulbinds( player_t* player )

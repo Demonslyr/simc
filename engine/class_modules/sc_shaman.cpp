@@ -389,6 +389,7 @@ public:
 
     //Covenant Legendaries
     buff_t* splintered_elemental_rod;
+    buff_t* seeds_of_rampant_growth;
 
     // Legendaries
     buff_t* chains_of_devastation_chain_heal;
@@ -6674,6 +6675,8 @@ struct fae_transfusion_tick_t : public shaman_spell_t
       {
         p()->cooldown.feral_spirits->adjust( -1.0 * seeds_effect->effectN( 3 ).time_value() );
       }
+      // shared effect
+      p()->buff.seeds_of_rampant_growth->increment();
     }
   }
 };
@@ -6843,6 +6846,16 @@ struct chain_harvest_t : public shaman_spell_t
 // Vesper Totem - Kyrian Covenant
 // ==========================================================================
 
+struct raging_vesper_vortex_t : public shaman_spell_t
+{
+  raging_vesper_vortex_t( shaman_t* player )
+    : shaman_spell_t( "raging_vesper_vortex", player, player->find_spell( 356790 ) )
+  {
+    aoe        = -1;
+    ground_aoe = background = true;
+  }
+};
+
 struct vesper_totem_damage_t : public shaman_spell_t
 {
   // Cache closest target so we don't need to compute it for all hit targets
@@ -6917,13 +6930,16 @@ struct vesper_totem_damage_t : public shaman_spell_t
 struct vesper_totem_t : public shaman_spell_t
 {
   vesper_totem_damage_t* damage;
+  raging_vesper_vortex_t* legendary_damage;
 
   vesper_totem_t( shaman_t* player, const std::string& options_str ) :
     shaman_spell_t( "vesper_totem", player, player->covenant.kyrian ),
-    damage( new vesper_totem_damage_t( player ) )
+    damage( new vesper_totem_damage_t( player ) ),
+    legendary_damage( new raging_vesper_vortex_t(player) )
   {
     parse_options( options_str );
     add_child( damage );
+    add_child( legendary_damage );
   }
 
   void execute() override
@@ -6951,6 +6967,10 @@ struct vesper_totem_t : public shaman_spell_t
                   break;
                 case ground_aoe_params_t::state_type::EVENT_STOPPED:
                   this->p()->buff.vesper_totem->expire();
+                  if ( this->p()->legendary.raging_vesper_vortex->ok() )
+                  {
+                    legendary_damage->execute();
+                  }
                   break;
                 default:
                   break;
@@ -8375,6 +8395,13 @@ void shaman_t::create_buffs()
                                    ->set_default_value_from_effect_type( A_HASTE_ALL )
                                    ->set_pct_buff_type( STAT_PCT_BUFF_HASTE );
   }
+  if ( legendary.seeds_of_rampant_growth->ok() )
+  {
+    buff.seeds_of_rampant_growth = make_buff( this, "seeds_of_rampant_growth", find_spell( 358945 ) )
+                                    ->set_default_value_from_effect_type(A_MOD_ALL_CRIT_CHANCE)
+                                    ->set_pct_buff_type(STAT_PCT_BUFF_CRIT);
+  }
+
   //
   // Elemental
   //
@@ -8736,20 +8763,21 @@ void shaman_t::init_action_list_elemental()
   action_priority_list_t* precombat     = get_action_priority_list( "precombat" );
   action_priority_list_t* def           = get_action_priority_list( "default" );
 
-  precombat->add_action( "flask" );
-  precombat->add_action( "food" );
-  precombat->add_action( "augmentation" );
-  precombat->add_action( this, "Earth Elemental", "if=!talent.primal_elementalist.enabled" );
-  precombat->add_talent( this, "Stormkeeper",
-                         "if=talent.stormkeeper.enabled&(raid_event.adds.count<3|raid_event.adds.in>50)",
-                         "Use Stormkeeper precombat unless some adds will spawn soon." );
-  precombat->add_talent( this, "Elemental Blast", "if=talent.elemental_blast.enabled" );
-  precombat->add_action( this, "Lava Burst", "if=!talent.elemental_blast.enabled" );
 
-  precombat->add_action( "snapshot_stats", "Snapshot raid buffed stats before combat begins and pre-potting is done." );
-  precombat->add_action( "potion" );
 
   if ( options.rotation == ROTATION_STANDARD ) {
+    precombat->add_action( "flask" );
+    precombat->add_action( "food" );
+    precombat->add_action( "augmentation" );
+    precombat->add_action( this, "Earth Elemental", "if=!talent.primal_elementalist.enabled" );
+    precombat->add_talent( this, "Stormkeeper",
+							"if=talent.stormkeeper.enabled&(raid_event.adds.count<3|raid_event.adds.in>50)",
+							"Use Stormkeeper precombat unless some adds will spawn soon." );
+    precombat->add_talent( this, "Elemental Blast", "if=talent.elemental_blast.enabled" );
+    precombat->add_action( this, "Lava Burst", "if=!talent.elemental_blast.enabled" );
+	
+    precombat->add_action( "snapshot_stats", "Snapshot raid buffed stats before combat begins and pre-potting is done." );
+    precombat->add_action( "potion" );
     action_priority_list_t* single_target = get_action_priority_list( "single_target" );
     action_priority_list_t* aoe           = get_action_priority_list( "aoe" );
     action_priority_list_t* se_single_target = get_action_priority_list( "se_single_target" );
@@ -8924,6 +8952,19 @@ void shaman_t::init_action_list_elemental()
     single_target->add_action( this, "Flame Shock", "moving=1,if=movement.distance>6" );
     single_target->add_action( this, "Frost Shock", "moving=1" );
   } else if (options.rotation == ROTATION_SIMPLE) {
+    precombat->add_action( "flask" );
+    precombat->add_action( "food" );
+    precombat->add_action( "augmentation" );
+    precombat->add_action( this, "Earth Elemental", "if=!talent.primal_elementalist.enabled" );
+    precombat->add_talent( this, "Stormkeeper",
+							"if=talent.stormkeeper.enabled&(raid_event.adds.count<3|raid_event.adds.in>50)",
+							"Use Stormkeeper precombat unless some adds will spawn soon." );
+    precombat->add_talent( this, "Elemental Blast", "if=talent.elemental_blast.enabled" );
+    precombat->add_action( this, "Lava Burst", "if=!talent.elemental_blast.enabled" );
+	
+    precombat->add_action( "snapshot_stats", "Snapshot raid buffed stats before combat begins and pre-potting is done." );
+    precombat->add_action( "potion" );
+	
     action_priority_list_t* single_target = get_action_priority_list( "single_target" );
     action_priority_list_t* aoe           = get_action_priority_list( "aoe" );
 
@@ -9104,6 +9145,9 @@ void shaman_t::init_action_list_elemental()
                                "if=talent.echoing_shock.enabled&cooldown.lava_burst.remains<=gcd" );
     single_target->add_action( this, "Lava Burst", "if=talent.echoing_shock.enabled&buff.echoing_shock.up" );
     single_target->add_talent( this, "Liquid Magma Totem", "if=talent.liquid_magma_totem.enabled" );
+    single_target->add_action(
+        this, "Earthquake",
+        "if=buff.echoes_of_great_sundering.up&talent.master_of_the_elements.enabled&buff.master_of_the_elements.up");
     single_target->add_action( this, "Lightning Bolt",
                                "if=buff.stormkeeper.up&buff.master_of_the_elements.up&maelstrom<60" );
     single_target->add_action(

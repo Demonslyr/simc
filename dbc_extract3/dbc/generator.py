@@ -1284,12 +1284,13 @@ class SpellDataGenerator(DataGenerator):
          329548,
          # 9.1 Soulbinds
          352881, # Bonded Hearts (night fae/niya)
+         352918, 358404, # Newfound Resolve (kyrian/pelagos)
          # Miniscule Mailemental in an Envelope
          352542,
          # Tome of Monstrous Constructions
-         357163,
-         357168,
-         357169
+         357163, 357168, 357169,
+         # Blood Link (Shard of Domination Rune Word)
+         355761, 355767, 355768, 355769, 355804,
         ),
 
         # Warrior:
@@ -1752,6 +1753,10 @@ class SpellDataGenerator(DataGenerator):
           ( 347688, 1 ), # Charred Passions
           ( 356773, 0 ), # Fae Exposure Damage Debuff
           ( 356774, 0 ), # Fae Exposure Heal Buff
+          ( 358518, 3 ), # Call to Arms Invoke Xuen Duration
+          ( 358520, 1 ), # Call to Arms Invoke Niuzao Duration
+          ( 358521, 2 ), # Call to Arms Invoke Yu'lon Duration
+          ( 358522, 2 ), # Call to Arms Invoke Chi-Ji Duration
         ),
 
         # Druid:
