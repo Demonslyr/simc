@@ -1253,6 +1253,7 @@ class SpellDataGenerator(DataGenerator):
          344087, 344089, 344091, # Kyrian Stamina Passives
          354054, 354053, # Fatal Flaw vers/crit buffs (venthyr/nadjia)
          351687, # Necrolord Bonesmith Heirmir Mnemonic Equipmen debuff
+         352520, # Marileth's Kevin's Ooozeling Kevin's Wrath damage spell
          # Cabalists Hymnal
          344820,
          # Empyreal Ordnance
@@ -1285,12 +1286,35 @@ class SpellDataGenerator(DataGenerator):
          # 9.1 Soulbinds
          352881, # Bonded Hearts (night fae/niya)
          352918, 358404, # Newfound Resolve (kyrian/pelagos)
+         352086, 352095, # Pustule Eruption (Necrolord/Emeni)
          # Miniscule Mailemental in an Envelope
          352542,
          # Tome of Monstrous Constructions
          357163, 357168, 357169,
          # Blood Link (Shard of Domination Rune Word)
          355761, 355767, 355768, 355769, 355804,
+         # Winds of Winter (Shard of Domination Rune Word)
+         355724, 355733, 355735,
+         # Chaos Bane (Shard of Domination Rune Word)
+         355829, 356042, 356043, 356046,
+         # Banshee's Blight (Sylvanas Dagger) damage spell
+         358126,
+         # Exsanguinated (Shard of Bek)
+         356372,
+         # Shredded Soul (Ebonsoul Vise)
+         357785,
+         # Nerubian Ambush, Frost-Tinged Carapace Spikes (Relic of the Frozen Wastes)
+         355912, 357409,
+         # Volatile Detonation (Ticking Sack of Terror)
+         351694,
+         # Reactive Defense Matrix (Trinket damage)
+         356857,
+         # Withering Fire (Dark Ranger's Quiver)
+         353515,
+         # Preternatural Charge (Yasahm the Riftbreaker)
+         351561,
+         # Mythic Plus Season 2 Anima Powers
+         357575, 357582, 357584, # champion's brand
         ),
 
         # Warrior:
@@ -1352,6 +1376,8 @@ class SpellDataGenerator(DataGenerator):
             ( 328123, 0 ),          # Blessing of Summer damage spell
             ( 340203, 0 ),          # Hallowed Discernment damage
             ( 340214, 0 ),          # Hallowed Discernment heal
+            ( 355567, 0 ),          # Equinox
+            ( 355455, 0 ),          # Divine Resonance
         ),
 
         # Hunter:
@@ -1560,6 +1586,7 @@ class SpellDataGenerator(DataGenerator):
           ( 327164, 0 ),                                # Primordial Wave buff
           ( 336732, 0 ), ( 336733, 0 ),                 # Legendary: Elemental Equilibrium school buffs
 	  ( 336737, 0 ),                                # Runeforged Legendary: Chains of Devastation
+          ( 354648, 0 ),                                # Runeforged Legendary: Splintered Elements
         ),
 
         # Mage:

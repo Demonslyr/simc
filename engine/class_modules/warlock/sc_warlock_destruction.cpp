@@ -408,8 +408,8 @@ struct incinerate_fnb_t : public destruction_spell_t
 
     if ( p()->legendary.shard_of_annihilation.ok() )
     {
-      //PTR 2020-05-28: "Critical Strike chance increased by 100%" was not producing guaranteed crits, assuming multiplicative
-      m *= 1.0 + p()->buffs.shard_of_annihilation->data().effectN( 1 ).percent();
+      //PTR 2021-06-19: "Critical Strike chance increased by 100%" appears to be guaranteeing crits
+      m += p()->buffs.shard_of_annihilation->data().effectN( 1 ).percent();
     }
 
     return m;
@@ -534,8 +534,8 @@ struct incinerate_t : public destruction_spell_t
 
     if ( p()->legendary.shard_of_annihilation.ok() )
     {
-      //PTR 2020-05-28: "Critical Strike chance increased by 100%" was not producing guaranteed crits, assuming multiplicative
-      m *= 1.0 + p()->buffs.shard_of_annihilation->data().effectN( 1 ).percent();
+      //PTR 2021-06-19: "Critical Strike chance increased by 100%" appears to be guaranteeing crits
+      m += p()->buffs.shard_of_annihilation->data().effectN( 1 ).percent();
     }
 
     return m;
@@ -1140,6 +1140,7 @@ void warlock_t::create_apl_destruction()
   action_priority_list_t* havoc = get_action_priority_list( "havoc" );
 
   def->add_action( "call_action_list,name=havoc,if=havoc_active&active_enemies>1&active_enemies<5-talent.inferno.enabled+(talent.inferno.enabled&talent.internal_combustion.enabled)" );
+  def->add_action( "fleshcraft,if=soulbind.volatile_solvent,cancel_if=buff.volatile_solvent_humanoid.up" );
   def->add_action( "conflagrate,if=talent.roaring_blaze.enabled&debuff.roaring_blaze.remains<1.5" );
   def->add_action( "cataclysm,if=!(pet.infernal.active&dot.immolate.remains+1>pet.infernal.remains)|spell_targets.cataclysm>1" );
   def->add_action( "call_action_list,name=aoe,if=active_enemies>2" );

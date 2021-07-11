@@ -501,7 +501,7 @@ struct templars_verdict_t : public holy_power_consumer_t<paladin_melee_attack_t>
     if ( p() -> buffs.vanquishers_hammer -> up() )
     {
       p() -> active.necrolord_divine_storm -> schedule_execute();
-      p() -> buffs.vanquishers_hammer -> expire();
+      p() -> buffs.vanquishers_hammer -> decrement( 1 );
     }
 
     // TODO(mserrano): figure out the actionbar override thing instead of this hack.
@@ -607,7 +607,7 @@ struct judgment_ret_t : public judgment_t
     holy_power_generation( as<int>( p -> find_spell( 220637 ) -> effectN( 1 ).base_value() ) )
   {}
 
-  judgment_ret_t( paladin_t* p ) :
+  judgment_ret_t( paladin_t* p, bool is_divine_toll = true ) :
     judgment_t( p ),
     holy_power_generation( as<int>( p -> find_spell( 220637 ) -> effectN( 1 ).base_value() ) )
   {
@@ -616,7 +616,8 @@ struct judgment_ret_t : public judgment_t
 
     // according to skeletor this is given the bonus of 326011
     // TODO(mserrano) - fix this once spell data has been re-extracted
-    base_multiplier *= 1.0 + p -> find_spell( 326011 ) -> effectN( 1 ).percent();
+    if ( is_divine_toll )
+      base_multiplier *= 1.0 + p -> find_spell( 326011 ) -> effectN( 1 ).percent();
   }
 
   void execute() override
@@ -791,6 +792,8 @@ void paladin_t::create_ret_actions()
   if ( specialization() == PALADIN_RETRIBUTION )
   {
     active.divine_toll = new judgment_ret_t( this );
+    active.judgment = new judgment_ret_t( this, false );
+    active.divine_resonance = new judgment_ret_t( this, false );
   }
 }
 
@@ -992,7 +995,7 @@ void paladin_t::generate_action_prio_list_ret()
   // Items
 
   // special-cased items
-  std::unordered_set<std::string> special_items { "skulkers_wing", "macabre_sheet_music", "memory_of_past_sins", "dreadfire_vessel", "darkmoon_deck_voracity", "overwhelming_power_crystal", "spare_meat_hook", "grim_codex", "inscrutable_quantum_device", "sinful_gladiators_badge_of_ferocity", "sinful_aspirants_badge_of_ferocity" };
+  std::unordered_set<std::string> special_items { "skulkers_wing", "macabre_sheet_music", "memory_of_past_sins", "dreadfire_vessel", "darkmoon_deck_voracity", "overwhelming_power_crystal", "spare_meat_hook", "grim_codex", "inscrutable_quantum_device", "salvaged_fusion_amplifier", "unchained_gladiators_badge_of_ferocity", "unchained_aspirants_badge_of_ferocity", "sinful_gladiators_badge_of_ferocity", "sinful_aspirants_badge_of_ferocity" };
 
   cds -> add_action( "use_item,name=inscrutable_quantum_device,if=buff.avenging_wrath.up|buff.crusade.up&buff.crusade.stack=10|fight_remains<30" );
   cds -> add_action( "use_item,name=overwhelming_power_crystal,if=buff.avenging_wrath.up|buff.crusade.up&buff.crusade.stack=10|fight_remains<15" );
@@ -1003,6 +1006,9 @@ void paladin_t::generate_action_prio_list_ret()
   cds -> add_action( "use_item,name=grim_codex" );
   cds -> add_action( "use_item,name=memory_of_past_sins" );
   cds -> add_action( "use_item,name=spare_meat_hook" );
+  cds -> add_action( "use_item,name=salvaged_fusion_amplifier" );
+  cds -> add_action( "use_item,name=unchained_gladiators_badge_of_ferocity,if=buff.avenging_wrath.up|buff.crusade.up&buff.crusade.stack>=10|cooldown.avenging_wrath.remains>45|cooldown.crusade.remains>45" );
+  cds -> add_action( "use_item,name=unchained_aspirants_badge_of_ferocity,if=buff.avenging_wrath.up|buff.crusade.up&buff.crusade.stack>=10|cooldown.avenging_wrath.remains>45|cooldown.crusade.remains>45" );
   cds -> add_action( "use_item,name=sinful_gladiators_badge_of_ferocity,if=buff.avenging_wrath.up|buff.crusade.up&buff.crusade.stack>=10|cooldown.avenging_wrath.remains>45|cooldown.crusade.remains>45" );
   cds -> add_action( "use_item,name=sinful_aspirants_badge_of_ferocity,if=buff.avenging_wrath.up|buff.crusade.up&buff.crusade.stack>=10|cooldown.avenging_wrath.remains>45|cooldown.crusade.remains>45" );
 

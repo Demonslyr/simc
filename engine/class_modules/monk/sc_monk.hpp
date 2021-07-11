@@ -6,6 +6,8 @@
 #pragma once
 
 #include "player/pet_spawner.hpp"
+#include "action/action_callback.hpp"
+#include "sc_enums.hpp"
 
 #include "simulationcraft.hpp"
 
@@ -213,7 +215,7 @@ public:
     buff_t* mana_tea;
     buff_t* refreshing_jade_wind;
     buff_t* teachings_of_the_monastery;
-    buff_t* touch_of_death;
+    buff_t* touch_of_death_mw;
     buff_t* thunder_focus_tea;
     buff_t* uplifting_trance;
 
@@ -740,6 +742,8 @@ public:
     spawner::pet_spawner_t<pet_t, monk_t> fallen_monk_mw;
     spawner::pet_spawner_t<pet_t, monk_t> fallen_monk_brm;
 
+    pet_t* bron;
+
     pets_t( monk_t* p );
   } pets;
 
@@ -781,6 +785,9 @@ public:
   double composite_attribute_multiplier( attribute_e attr ) const override;
   double composite_melee_expertise( const weapon_t* weapon ) const override;
   double composite_melee_attack_power() const override;
+  double composite_melee_attack_power_by_type( attack_power_type type ) const override;
+  double composite_spell_power( school_e school ) const override;
+  double composite_spell_power_multiplier() const override;
   double composite_spell_haste() const override;
   double composite_melee_haste() const override;
   double composite_attack_power_multiplier() const override;
@@ -803,6 +810,8 @@ public:
   void init_procs() override;
   void init_assessors() override;
   void init_rng() override;
+  void init_special_effects() override;
+  void init_special_effect( special_effect_t& effect ) override;
   void reset() override;
   double matching_gear_multiplier( attribute_e attr ) const override;
   void create_options() override;

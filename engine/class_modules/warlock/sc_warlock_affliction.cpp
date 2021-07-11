@@ -143,8 +143,8 @@ struct shadow_bolt_t : public affliction_spell_t
 
     if ( p()->legendary.shard_of_annihilation.ok() )
     {
-      //PTR 2020-05-28: "Critical Strike chance increased by 100%" was not producing guaranteed crits, assuming multiplicative
-      m *= 1.0 + p()->buffs.shard_of_annihilation->data().effectN( 1 ).percent();
+      //PTR 2021-06-19: "Critical Strike chance increased by 100%" appears to be guaranteeing crits
+      m += p()->buffs.shard_of_annihilation->data().effectN( 1 ).percent();
     }
 
     return m;
@@ -397,8 +397,8 @@ struct summon_darkglare_t : public affliction_spell_t
 
     if ( !p->min_version_check( VERSION_9_1_0 ) )
       cooldown->duration += timespan_t::from_millis( p->talents.dark_caller->effectN( 1 ).base_value() );
-    else if ( p->spec.dark_caller->ok() )
-      cooldown->duration += timespan_t::from_millis( p->spec.dark_caller->effectN( 1 ).base_value() );
+    else if ( p->spec.summon_darkglare_2->ok() )
+      cooldown->duration += timespan_t::from_millis( p->spec.summon_darkglare_2->effectN( 1 ).base_value() );
   }
 
   void execute() override
@@ -659,8 +659,8 @@ struct drain_soul_t : public affliction_spell_t
 
     if ( p()->legendary.shard_of_annihilation.ok() )
     {
-      //PTR 2020-05-28: "Critical Strike chance increased by 100%" was not producing guaranteed crits, assuming multiplicative
-      m *= 1.0 + p()->buffs.shard_of_annihilation->data().effectN( 3 ).percent();
+      //PTR 2021-06-19: "Critical Strike chance increased by 100%" appears to be guaranteeing crits
+      m += p()->buffs.shard_of_annihilation->data().effectN( 3 ).percent();
     }
 
     return m;
@@ -864,7 +864,7 @@ void warlock_t::init_spells_affliction()
   spec.corruption_3        = find_specialization_spell( "Corruption", "Rank 3" );
   spec.unstable_affliction_2 = find_specialization_spell( "Unstable Affliction", "Rank 2" );
   spec.unstable_affliction_3 = find_specialization_spell( "Unstable Affliction", "Rank 3" );
-  spec.dark_caller         = find_specialization_spell( "Dark Caller" ); //9.1 PTR - Now a passive learned at level 58
+  spec.summon_darkglare_2         = find_specialization_spell( "Summon Darkglare", "Rank 2" ); //9.1 PTR - Now a passive learned at level 58
 
   // Talents
   talents.nightfall           = find_talent_spell( "Nightfall" );
@@ -957,7 +957,8 @@ void warlock_t::create_apl_affliction()
 
   def->add_action( "phantom_singularity,if=covenant.night_fae&time>5&cooldown.soul_rot.remains<1&(trinket.empyreal_ordnance.cooldown.remains<162|!equipped.empyreal_ordnance)", "Sync Phantom Singularity with Venthyr/Night Fae covenant dot, otherwise use on cooldown. If Empyreal Ordnance buff is incoming, hold until it's ready (18 seconds after use)" );
   def->add_action( "phantom_singularity,if=covenant.venthyr&time>5&cooldown.impending_catastrophe.remains<1&(trinket.empyreal_ordnance.cooldown.remains<162|!equipped.empyreal_ordnance)" );
-  def->add_action( "phantom_singularity,if=(covenant.necrolord|covenant.kyrian|covenant.none)&(trinket.empyreal_ordnance.cooldown.remains<162|!equipped.empyreal_ordnance)" );
+  def->add_action( "phantom_singularity,if=covenant.necrolord&runeforge.malefic_wrath&time>5&cooldown.decimating_bolt.remains<3&(trinket.empyreal_ordnance.cooldown.remains<162|!equipped.empyreal_ordnance)", "Necrolord with Malefic Wrath casts phantom singularity in line with Decimating Bolt");
+  def->add_action( "phantom_singularity,if=(covenant.kyrian|covenant.none|(covenant.necrolord&!runeforge.malefic_wrath))&(trinket.empyreal_ordnance.cooldown.remains<162|!equipped.empyreal_ordnance)", "Other covenants (including non-MW Necro) cast PS on cooldown" );
   def->add_action( "phantom_singularity,if=time_to_die<16" );
 
   def->add_action( "call_action_list,name=covenant,if=dot.phantom_singularity.ticking&(covenant.night_fae|covenant.venthyr)", "If Phantom Singularity is ticking, it's time to use other major dots" );
@@ -987,10 +988,12 @@ void warlock_t::create_apl_affliction()
 
   def->add_action( "call_action_list,name=item", "Catch-all item usage for anything not specified elsewhere" );
 
-  def->add_action( "call_action_list,name=se,if=debuff.shadow_embrace.stack<(2-action.shadow_bolt.in_flight)|debuff.shadow_embrace.remains<3", "Refresh Shadow Embrace before spending shards on Malefic Rapture" );
-
-  def->add_action( "malefic_rapture,if=dot.vile_taint.ticking|dot.impending_catastrophe_dot.ticking|dot.soul_rot.ticking", "Use Malefic Rapture when major dots are up, or if there will be significant time until the next Phantom Singularity" );
-  def->add_action( "malefic_rapture,if=talent.phantom_singularity&(dot.phantom_singularity.ticking|cooldown.phantom_singularity.remains>25|time_to_die<cooldown.phantom_singularity.remains)" );
+  def->add_action( "call_action_list,name=se,if=talent.shadow_embrace&(debuff.shadow_embrace.stack<(2-action.shadow_bolt.in_flight)|debuff.shadow_embrace.remains<3)" );
+  
+  def->add_action( "malefic_rapture,if=(dot.vile_taint.ticking|dot.impending_catastrophe_dot.ticking|dot.soul_rot.ticking)&(!runeforge.malefic_wrath|buff.malefic_wrath.stack<3|soul_shard>1)", "Use Malefic Rapture when major dots are up, or if there will be significant time until the next Phantom Singularity. If utilizing Malefic Wrath, hold a shard to refresh the buff" );
+  def->add_action( "malefic_rapture,if=runeforge.malefic_wrath&cooldown.soul_rot.remains>20&buff.malefic_wrath.remains<4", "Use Malefic Rapture to maintain the malefic wrath buff until shards need to be generated for the next burst window (20 seconds is more than sufficient to generate 3 shards)" );
+  def->add_action( "malefic_rapture,if=runeforge.malefic_wrath&(covenant.necrolord|covenant.kyrian)&buff.malefic_wrath.remains<4", "Maintain Malefic Wrath at all times for the Necrolord or Kyrian covenant");
+  def->add_action( "malefic_rapture,if=talent.phantom_singularity&(dot.phantom_singularity.ticking|cooldown.phantom_singularity.remains>25|time_to_die<cooldown.phantom_singularity.remains)&(!runeforge.malefic_wrath|buff.malefic_wrath.stack<3|soul_shard>1)", "Use Malefic Rapture on Phantom Singularity casts, making sure to save a shard to stack Malefic Wrath if using it" );
   def->add_action( "malefic_rapture,if=talent.sow_the_seeds" );
 
   def->add_action( "drain_life,if=buff.inevitable_demise.stack>40|buff.inevitable_demise.up&time_to_die<4", "Drain Life is only a DPS gain with Inevitable Demise near max stacks. If fight is about to end do not miss spending the stacks" );
@@ -999,6 +1002,7 @@ void warlock_t::create_apl_affliction()
   def->add_action( "unstable_affliction,if=refreshable" );
   def->add_action( "siphon_life,cycle_targets=1,target_if=refreshable" );
   def->add_action( "corruption,cycle_targets=1,if=active_enemies<4-(talent.sow_the_seeds|talent.siphon_life),target_if=refreshable" );
+  def->add_action( "fleshcraft,if=soulbind.volatile_solvent,cancel_if=buff.volatile_solvent_humanoid.up" );
   def->add_action( "drain_soul,interrupt=1" );
   def->add_action( "shadow_bolt" );
 
@@ -1043,6 +1047,7 @@ void warlock_t::create_apl_affliction()
   aoe->add_action( "siphon_life,cycle_targets=1,if=active_dot.siphon_life<=3,target_if=!dot.siphon_life.ticking" );
   aoe->add_action( "call_action_list,name=covenant" );
   aoe->add_action( "drain_life,if=buff.inevitable_demise.stack>=50|buff.inevitable_demise.up&time_to_die<5|buff.inevitable_demise.stack>=35&dot.soul_rot.ticking" );
+  aoe->add_action( "fleshcraft,if=soulbind.volatile_solvent,cancel_if=buff.volatile_solvent_humanoid.up" );
   aoe->add_action( "drain_soul,interrupt=1" );
   aoe->add_action( "shadow_bolt" );
 
@@ -1063,6 +1068,7 @@ void warlock_t::create_apl_affliction()
   delay->add_action( "use_item,name=empyreal_ordnance,if=(covenant.night_fae&cooldown.soul_rot.remains<20)|(covenant.venthyr&cooldown.impending_catastrophe.remains<20)|(covenant.necrolord|covenant.kyrian|covenant.none)" );
   delay->add_action( "use_item,name=sunblood_amethyst,if=(covenant.night_fae&cooldown.soul_rot.remains<6)|(covenant.venthyr&cooldown.impending_catastrophe.remains<6)|(covenant.necrolord|covenant.kyrian|covenant.none)" );
   delay->add_action( "use_item,name=soulletting_ruby,if=(covenant.night_fae&cooldown.soul_rot.remains<8)|(covenant.venthyr&cooldown.impending_catastrophe.remains<8)|(covenant.necrolord|covenant.kyrian|covenant.none)" );
+  delay->add_action( "use_item,name=name=shadowed_orb_of_torment,if=(covenant.night_fae&cooldown.soul_rot.remains<4)|(covenant.venthyr&cooldown.impending_catastrophe.remains<4)|(covenant.necrolord|covenant.kyrian|covenant.none)" );
 
   stat->add_action( "use_item,name=inscrutable_quantum_device" );
   stat->add_action( "use_item,name=instructors_divine_bell" );
@@ -1081,6 +1087,8 @@ void warlock_t::create_apl_affliction()
   dmg->add_action( "use_item,name=soul_igniter" );
   dmg->add_action( "use_item,name=dreadfire_vessel" );
   dmg->add_action( "use_item,name=glyph_of_assimilation" );
+  dmg->add_action( "use_item,name=unchained_gladiators_shackles" );
+  dmg->add_action( "use_item,name=ebonsoul_vice" );
 
   split->add_action( "variable,name=special_equipped,value=(((equipped.empyreal_ordnance^equipped.inscrutable_quantum_device)^equipped.soulletting_ruby)^equipped.sunblood_amethyst)" );
   split->add_action( "variable,name=trinket_one,value=(trinket.1.has_proc.any&trinket.1.has_cooldown)" );

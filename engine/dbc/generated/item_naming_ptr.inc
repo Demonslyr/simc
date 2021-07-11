@@ -1,4 +1,4 @@
-// Item name descriptions, wow build 9.1.0.39015
+// Item name descriptions, wow build 9.1.0.39172
 static const std::array<item_name_description_t, 644> __ptr_item_name_description_data { {
   {     2, "Now with extra description"                  },
   {    20, "Season 10"                                   },
@@ -538,7 +538,7 @@ static const std::array<item_name_description_t, 644> __ptr_item_name_descriptio
   { 13779, "Inner Demons"                                },
   { 13780, "Chaos Digits"                                },
   { 13781, "Erratic Fel Core"                            },
-  { 13782, "Fel Bombardier Cloak"                        },
+  { 13782, "Fel Bombardier"                              },
   { 13783, "Medallion of the Darkness Flame"             },
   { 13784, "Razelikh's Defilement"                       },
   { 13785, "Spiraling Fel Flame Lash"                    },
@@ -603,7 +603,7 @@ static const std::array<item_name_description_t, 644> __ptr_item_name_descriptio
   { 13847, "Obedience"                                   },
   { 13848, "Deathspike"                                  },
   { 13849, "Death's Advance"                             },
-  { 13850, "Lost"                                        },
+  { 13850, "Korthia"                                     },
   { 13851, "Resounding Clarity"                          },
   { 13852, "Shard of Domination"                         },
   { 13853, "Radiant Embers"                              },
